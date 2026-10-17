@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { HashRouter, Route, Routes } from 'react-router-dom';
+import { AppShell } from './components/layout';
 import { Toaster } from './components/ui';
 import { AssistantPage } from './features/AssistantPage';
 import { ExpenseEditor } from './features/expense/ExpenseEditor';
@@ -25,15 +26,17 @@ export default function App() {
 
   return (
     <HashRouter>
-      <Routes>
-        <Route path="/" element={<TripsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/import" element={<ImportPage />} />
-        <Route path="/assistant" element={<AssistantPage />} />
-        <Route path="/trip/:tripId" element={<TripPage />} />
-        <Route path="/trip/:tripId/expense/:expenseId" element={<ExpenseEditor />} />
-        <Route path="*" element={<TripsPage />} />
-      </Routes>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<TripsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/import" element={<ImportPage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/trip/:tripId" element={<TripPage />} />
+          <Route path="/trip/:tripId/expense/:expenseId" element={<ExpenseEditor />} />
+          <Route path="*" element={<TripsPage />} />
+        </Routes>
+      </AppShell>
       <Toaster />
     </HashRouter>
   );

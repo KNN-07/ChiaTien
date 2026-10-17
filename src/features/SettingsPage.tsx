@@ -1,10 +1,12 @@
+import { faArrowsRotate, faDesktop, faDownload, faEye, faEyeSlash, faMoon, faSun, faTrash, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { useRef, useState } from 'react';
+import { Icon } from '../components/icons';
 import { Page, TopBar } from '../components/layout';
-import { Button, Card, Field, Input, Segmented, Toggle, toast } from '../components/ui';
+import { Badge, Button, Card, Field, Input, Segmented, Toggle, toast } from '../components/ui';
 import { useT } from '../i18n';
 import { db, saveTrip } from '../services/db';
 import { listGemmaModels } from '../services/gemma';
-import { DEFAULT_MODEL, SUGGESTED_MODELS, setSettings, useSettings, type Lang, type Theme } from '../services/settings';
+import { DEFAULT_MODEL, setSettings, SUGGESTED_MODELS, useSettings, type Lang, type Theme } from '../services/settings';
 import { downloadFile, parseTrip } from '../services/share';
 
 export function SettingsPage() {
@@ -50,96 +52,89 @@ export function SettingsPage() {
     }
   };
 
+  const modelChoices = models.length ? models : SUGGESTED_MODELS;
+
   return (
     <Page>
       <TopBar back title={t('settings.title')} />
-      <div className="space-y-4">
-        <Card>
-          <div className="space-y-3">
-            <Field label={t('settings.language')}>
-              <Segmented<Lang>
-                value={s.lang}
-                onChange={(lang) => setSettings({ lang })}
-                options={[
-                  { value: 'vi', label: '🇻🇳 Tiếng Việt' },
-                  { value: 'en', label: '🇬🇧 English' },
-                ]}
-              />
-            </Field>
-            <Field label={t('settings.theme')}>
-              <Segmented<Theme>
-                value={s.theme}
-                onChange={(theme) => setSettings({ theme })}
-                options={[
-                  { value: 'system', label: t('settings.theme_system') },
-                  { value: 'light', label: `☀️ ${t('settings.theme_light')}` },
-                  { value: 'dark', label: `🌙 ${t('settings.theme_dark')}` },
-                ]}
-              />
-            </Field>
-          </div>
-        </Card>
-
-        <Card title={`🤖 ${t('settings.gemma')}`}>
-          <div className="space-y-3">
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <Card title={t('settings.gemma')} description={t('settings.api_key_hint')} className="lg:row-span-2">
+          <div className="grid gap-5">
             <Field
               label={t('settings.api_key')}
               hint={
-                <>
-                  {t('settings.api_key_hint')}{' '}
-                  <a className="text-teal-700 underline dark:text-teal-400" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
-                    aistudio.google.com/apikey ↗
-                  </a>
-                </>
+                <a className="font-medium text-foreground underline underline-offset-4" href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+                  aistudio.google.com/apikey
+                </a>
               }
             >
               <div className="flex gap-2">
-                <Input
-                  type={showKey ? 'text' : 'password'}
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={s.apiKey}
-                  onChange={(e) => setSettings({ apiKey: e.target.value.trim() })}
-                  placeholder="AIza…"
-                />
-                <Button onClick={() => setShowKey(!showKey)}>{showKey ? '🙈' : '👁️'}</Button>
+                <Input type={showKey ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={s.apiKey} onChange={(e) => setSettings({ apiKey: e.target.value.trim() })} placeholder="AIza…" />
+                <Button variant="outline" size="icon" onClick={() => setShowKey(!showKey)} aria-label={showKey ? 'Hide' : 'Show'}>
+                  <Icon icon={showKey ? faEyeSlash : faEye} />
+                </Button>
               </div>
             </Field>
             <Field label={t('settings.model')}>
               <div className="flex gap-2">
                 <Input list="gemma-models" value={s.model} onChange={(e) => setSettings({ model: e.target.value.trim() || DEFAULT_MODEL })} />
                 <datalist id="gemma-models">
-                  {(models.length ? models : SUGGESTED_MODELS).map((m) => (
+                  {modelChoices.map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
-                <Button disabled={!s.apiKey || loading} onClick={loadModels}>
-                  {loading ? '…' : '↻'} {t('settings.list_models')}
+                <Button variant="outline" disabled={!s.apiKey || loading} icon={faArrowsRotate} onClick={loadModels} className={loading ? '[&_svg]:animate-spin' : ''}>
+                  <span className="hidden sm:inline">{t('settings.list_models')}</span>
                 </Button>
               </div>
             </Field>
-            <Toggle checked={s.thinking} onChange={(thinking) => setSettings({ thinking })} label={t('settings.thinking')} hint={t('settings.thinking_hint')} />
-            {models.length > 0 && (
-              <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
-                {models.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setSettings({ model: m })}
-                    className={`rounded-full px-2 py-0.5 text-xs ${m === s.model ? 'bg-teal-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}
-                  >
+            <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+              {modelChoices.map((m) => (
+                <button key={m} type="button" onClick={() => setSettings({ model: m })}>
+                  <Badge variant={m === s.model ? 'default' : 'outline'} className="font-mono font-medium">
                     {m}
-                  </button>
-                ))}
-              </div>
-            )}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+            <div className="border-t">
+              <Toggle checked={s.thinking} onChange={(thinking) => setSettings({ thinking })} label={t('settings.thinking')} hint={t('settings.thinking_hint')} />
+            </div>
           </div>
         </Card>
 
-        <Card title={`💾 ${t('settings.data')}`}>
-          <p className="mb-3 text-xs text-slate-500">{t('settings.data_hint')}</p>
+        <Card title={t('settings.language')}>
+          <div className="grid gap-5">
+            <Segmented<Lang>
+              value={s.lang}
+              onChange={(lang) => setSettings({ lang })}
+              options={[
+                { value: 'vi', label: 'Tiếng Việt' },
+                { value: 'en', label: 'English' },
+              ]}
+            />
+            <Field label={t('settings.theme')}>
+              <Segmented<Theme>
+                value={s.theme}
+                onChange={(theme) => setSettings({ theme })}
+                options={[
+                  { value: 'system', label: t('settings.theme_system'), icon: faDesktop },
+                  { value: 'light', label: t('settings.theme_light'), icon: faSun },
+                  { value: 'dark', label: t('settings.theme_dark'), icon: faMoon },
+                ]}
+              />
+            </Field>
+          </div>
+        </Card>
+
+        <Card title={t('settings.data')} description={t('settings.data_hint')}>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={exportAll}>⬇️ {t('settings.export_all')}</Button>
-            <Button onClick={() => fileRef.current?.click()}>⬆️ {t('settings.import_all')}</Button>
+            <Button variant="outline" icon={faDownload} onClick={exportAll}>
+              {t('settings.export_all')}
+            </Button>
+            <Button variant="outline" icon={faUpload} onClick={() => fileRef.current?.click()}>
+              {t('settings.import_all')}
+            </Button>
             <input
               ref={fileRef}
               type="file"
@@ -152,7 +147,8 @@ export function SettingsPage() {
               }}
             />
             <Button
-              variant="danger"
+              variant="destructive"
+              icon={faTrash}
               onClick={async () => {
                 if (!confirm(t('settings.clear_confirm'))) return;
                 await db.trips.clear();
@@ -160,12 +156,12 @@ export function SettingsPage() {
                 toast(t('done'));
               }}
             >
-              🗑️ {t('settings.clear_all')}
+              {t('settings.clear_all')}
             </Button>
           </div>
         </Card>
-        <p className="text-center text-xs text-slate-400">ChiaTiền v1.0</p>
       </div>
+      <p className="mt-8 text-center text-xs text-muted-foreground">ChiaTiền v1.1</p>
     </Page>
   );
 }

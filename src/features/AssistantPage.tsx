@@ -2,8 +2,25 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { runAgentTurn, slimHistory, type AgentEvent } from '../agent/agent';
 import { undoTurn } from '../agent/tools';
-import { Page, TopBar } from '../components/layout';
-import { Button, Chip, cx, Select } from '../components/ui';
+import {
+  faArrowRight,
+  faArrowUp,
+  faChevronDown,
+  faCircleCheck,
+  faMagnifyingGlass,
+  faMicrophone,
+  faPaperclip,
+  faPenToSquare,
+  faRotateLeft,
+  faSpinner,
+  faStop,
+  faTriangleExclamation,
+  faWandMagicSparkles,
+  faXmark,
+} from '@fortawesome/free-solid-svg-icons';
+import { Icon } from '../components/icons';
+import { BottomBar, Page, TopBar } from '../components/layout';
+import { Alert, Button, buttonVariants, cn, Select } from '../components/ui';
 import type { ID, Trip } from '../domain/types';
 import { useT, type DictKey } from '../i18n';
 import type { Content, Part } from '../services/ai';
@@ -126,91 +143,107 @@ export function AssistantPage() {
   const examples: DictKey[] = trip ? ['ai.ex2', 'ai.ex3', 'ai.ex5', 'ai.ex4'] : ['ai.ex1', 'ai.ex2', 'ai.ex4'];
 
   return (
-    <Page className="flex flex-col !pb-0">
+    <Page wide={false} className="flex flex-col">
       <TopBar
         back={tripId ? `/trip/${tripId}` : '/'}
-        title={`✨ ${t('ai.title')}`}
+        title={t('ai.title')}
         subtitle={settings.model}
         right={
           chat.turns.length > 0 && (
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setChat(() => ({ history: [], turns: [] }))}>
-              {t('ai.clear')}
+            <Button size="sm" variant="ghost" icon={faPenToSquare} disabled={busy} onClick={() => setChat(() => ({ history: [], turns: [] }))}>
+              <span className="hidden sm:inline">{t('ai.clear')}</span>
             </Button>
           )
         }
       />
-      <Select value={tripId} onChange={(e) => setParams(e.target.value ? { trip: e.target.value } : {}, { replace: true })} className="mb-3">
-        <option value="">🗂️ {t('ai.no_context')}</option>
+      <Select value={tripId} onChange={(e) => setParams(e.target.value ? { trip: e.target.value } : {}, { replace: true })} className="mb-5" aria-label={t('ai.context', { name: '' })}>
+        <option value="">{t('ai.no_context')}</option>
         {trips?.map((x) => (
           <option key={x.id} value={x.id}>
-            {x.emoji} {x.name}
+            {x.name}
           </option>
         ))}
       </Select>
 
-      <div className="flex-1 space-y-4 pb-40">
+      <div className="flex-1 space-y-5 pb-44">
         {!settings.apiKey && (
-          <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-            {t('ai.need_key')}{' '}
-            <Link to="/settings" className="underline">
-              {t('scan.go_settings')}
-            </Link>
-          </p>
+          <Alert variant="warning">
+            {t('ai.need_key')} <Link to="/settings">{t('scan.go_settings')}</Link>
+          </Alert>
         )}
         {chat.turns.length === 0 && (
-          <div className="py-6 text-center">
-            <div className="mb-2 text-4xl">✨</div>
-            <p className="mx-auto max-w-md text-sm text-slate-600 dark:text-slate-300">{t('ai.welcome')}</p>
-            <div className="mt-4 flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center py-10 text-center">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border bg-muted">
+              <Icon icon={faWandMagicSparkles} />
+            </div>
+            <h2 className="text-lg font-semibold tracking-tight">{t('ai.title')}</h2>
+            <p className="mt-1 max-w-md text-sm text-muted-foreground">{t('ai.welcome')}</p>
+            <div className="mt-6 grid w-full max-w-xl gap-2 sm:grid-cols-2">
               {examples.map((k) => (
-                <Chip key={k} onClick={() => setInput(t(k))} className="max-w-full text-left">
-                  💬 {t(k)}
-                </Chip>
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setInput(t(k))}
+                  className="rounded-lg border bg-card px-3 py-2.5 text-left text-sm shadow-sm transition-colors hover:bg-accent"
+                >
+                  {t(k)}
+                </button>
               ))}
             </div>
           </div>
         )}
 
         {chat.turns.map((turn) => (
-          <div key={turn.id} className="space-y-2">
+          <div key={turn.id} className="grid gap-2">
             <div className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-teal-600 px-3.5 py-2 text-white">
-                {turn.imageUrl && <img src={turn.imageUrl} alt="" className="mb-1.5 max-h-40 rounded-lg" />}
+              <div className="max-w-[85%] rounded-lg bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+                {turn.imageUrl && <img src={turn.imageUrl} alt="" className="mb-1.5 max-h-40 rounded-md" />}
                 {turn.text && <p className="whitespace-pre-wrap">{turn.text}</p>}
               </div>
             </div>
             {turn.events.map((e, i) =>
               e.type === 'text' ? (
-                <div key={i} className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md bg-white px-3.5 py-2 ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-                  {e.text}
+                <div key={i} className="flex gap-2.5">
+                  <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-muted">
+                    <Icon icon={faWandMagicSparkles} className="text-[11px]" />
+                  </span>
+                  <div className="max-w-[90%] whitespace-pre-wrap rounded-lg border bg-card px-3.5 py-2 text-sm shadow-sm">{e.text}</div>
                 </div>
               ) : (
                 <ToolCard key={i} event={e} />
               ),
             )}
-            {turn.status === 'running' && <p className="animate-pulse text-sm text-slate-500">⏳ {t('ai.working')}</p>}
-            {turn.error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-200">{t('ai.error', { err: turn.error })}</p>}
+            {turn.status === 'running' && (
+              <p className="flex items-center gap-2 pl-9 text-sm text-muted-foreground">
+                <Icon icon={faSpinner} spin className="text-xs" /> {t('ai.working')}
+              </p>
+            )}
+            {turn.error && <Alert variant="destructive">{t('ai.error', { err: turn.error })}</Alert>}
             {turn.status !== 'running' && turn.before.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2 pl-9 text-sm">
                 {turn.status === 'undone' ? (
-                  <span className="text-slate-500">↩️ {t('ai.undone')}</span>
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <Icon icon={faRotateLeft} className="text-xs" /> {t('ai.undone')}
+                  </span>
                 ) : (
                   <Button
                     size="sm"
+                    variant="outline"
+                    icon={faRotateLeft}
                     onClick={async () => {
                       await undoTurn(turn.before);
                       updateTurn(turn.id, (x) => ({ ...x, status: 'undone' }));
                     }}
                   >
-                    ↩️ {t('ai.undo')}
+                    {t('ai.undo')}
                   </Button>
                 )}
                 {turn.status !== 'undone' &&
                   turn.touched
                     .filter((id) => id !== tripId)
                     .map((id) => (
-                      <Link key={id} to={`/trip/${id}`} className="text-teal-700 underline dark:text-teal-400">
-                        {t('ai.view_trip')} →
+                      <Link key={id} to={`/trip/${id}`} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                        {t('ai.view_trip')} <Icon icon={faArrowRight} className="text-[10px]" />
                       </Link>
                     ))}
               </div>
@@ -220,38 +253,25 @@ export function AssistantPage() {
         <div ref={endRef} />
       </div>
 
-      <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
+      <BottomBar className="bg-background/80">
         <form
-          className="mx-auto max-w-2xl"
+          className="mx-auto max-w-3xl"
           onSubmit={(e) => {
             e.preventDefault();
             send(input);
           }}
         >
-          {imageUrl && (
-            <div className="mb-2 flex items-center gap-2">
-              <img src={imageUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />
-              <button type="button" className="text-sm text-slate-500" onClick={() => setImage(null)}>
-                ✕
-              </button>
-            </div>
-          )}
-          <div className="flex items-end gap-2">
-            <button type="button" title={t('ai.attach')} onClick={() => fileRef.current?.click()} className="rounded-full p-2.5 text-xl hover:bg-slate-100 dark:hover:bg-slate-800">
-              📷
-            </button>
-            {canListen && (
-              <button
-                type="button"
-                title={t('ai.voice')}
-                onClick={listen}
-                className={cx('rounded-full p-2.5 text-xl hover:bg-slate-100 dark:hover:bg-slate-800', listening && 'animate-pulse bg-rose-100')}
-              >
-                🎙️
-              </button>
+          <div className="rounded-xl border bg-card shadow-sm focus-within:ring-1 focus-within:ring-ring">
+            {imageUrl && (
+              <div className="flex items-center gap-2 px-3 pt-3">
+                <img src={imageUrl} alt="" className="h-12 w-12 rounded-md border object-cover" />
+                <Button variant="ghost" size="icon-sm" onClick={() => setImage(null)} aria-label={t('exp.remove_photo')}>
+                  <Icon icon={faXmark} className="text-xs" />
+                </Button>
+              </div>
             )}
             <textarea
-              rows={1}
+              rows={2}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -261,17 +281,28 @@ export function AssistantPage() {
                 }
               }}
               placeholder={listening ? t('ai.listening') : t('ai.placeholder')}
-              className="max-h-32 min-h-[2.75rem] flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-base outline-none focus:border-teal-500 dark:border-slate-600 dark:bg-slate-900 sm:text-sm"
+              className="block max-h-40 w-full resize-none bg-transparent px-3 pt-3 text-base outline-none placeholder:text-muted-foreground md:text-sm"
             />
-            {busy ? (
-              <Button variant="secondary" onClick={() => abortRef.current?.abort()}>
-                ■ {t('ai.stop')}
+            <div className="flex items-center gap-1 p-2">
+              <Button variant="ghost" size="icon-sm" title={t('ai.attach')} aria-label={t('ai.attach')} onClick={() => fileRef.current?.click()}>
+                <Icon icon={faPaperclip} />
               </Button>
-            ) : (
-              <Button type="submit" variant="primary" disabled={!settings.apiKey || (!input.trim() && !image)}>
-                ➤
-              </Button>
-            )}
+              {canListen && (
+                <Button variant="ghost" size="icon-sm" title={t('ai.voice')} aria-label={t('ai.voice')} onClick={listen} className={cn(listening && 'animate-pulse text-negative')}>
+                  <Icon icon={faMicrophone} />
+                </Button>
+              )}
+              <div className="flex-1" />
+              {busy ? (
+                <Button size="sm" variant="outline" icon={faStop} onClick={() => abortRef.current?.abort()}>
+                  {t('ai.stop')}
+                </Button>
+              ) : (
+                <Button type="submit" size="icon-sm" disabled={!settings.apiKey || (!input.trim() && !image)} aria-label={t('ai.send')}>
+                  <Icon icon={faArrowUp} />
+                </Button>
+              )}
+            </div>
           </div>
           <input
             ref={fileRef}
@@ -285,7 +316,7 @@ export function AssistantPage() {
             }}
           />
         </form>
-      </div>
+      </BottomBar>
     </Page>
   );
 }
@@ -298,7 +329,7 @@ interface SpeechRec {
   start: () => void;
 }
 
-/** Compact card for one tool call. Read-only lookups are shown muted. */
+/** Compact row for one tool call. Read-only lookups are shown muted. */
 function ToolCard({ event }: { event: Extract<AgentEvent, { type: 'tool' }> }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -307,24 +338,28 @@ function ToolCard({ event }: { event: Extract<AgentEvent, { type: 'tool' }> }) {
   const label = t(`tool.${event.name}` as DictKey);
   const summary = event.ok ? summarize(event) : String(r.error ?? '');
   return (
-    <button
-      type="button"
-      onClick={() => setOpen(!open)}
-      className={cx(
-        'block w-full max-w-[90%] rounded-xl px-3 py-1.5 text-left text-sm',
-        !event.ok
-          ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200'
-          : readOnly
-            ? 'text-slate-500'
-            : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
-      )}
-    >
-      <span className="font-medium">
-        {event.ok ? (readOnly ? '🔎' : '✅') : '⚠️'} {label}
-      </span>
-      {summary && <span className="ml-1.5">{summary}</span>}
-      {open && <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap text-xs opacity-80">{JSON.stringify({ args: event.args, result: r }, null, 1)}</pre>}
-    </button>
+    <div className="pl-9">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={cn(
+          'flex w-full max-w-[90%] items-start gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors hover:bg-muted/50',
+          !event.ok && 'border-negative/40 bg-negative/5 text-negative',
+          event.ok && readOnly && 'border-dashed text-muted-foreground',
+        )}
+      >
+        <Icon
+          icon={!event.ok ? faTriangleExclamation : readOnly ? faMagnifyingGlass : faCircleCheck}
+          className={cn('mt-0.5 text-[11px]', event.ok && !readOnly && 'text-positive')}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="font-semibold">{label}</span>
+          {summary && <span className={cn('ml-1.5', event.ok && 'text-muted-foreground')}>{summary}</span>}
+          {open && <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-[11px] text-foreground">{JSON.stringify({ args: event.args, result: r }, null, 1)}</pre>}
+        </span>
+        <Icon icon={faChevronDown} className={cn('mt-0.5 text-[10px] text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+    </div>
   );
 }
 

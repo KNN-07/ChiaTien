@@ -170,7 +170,7 @@ export const vi = {
 
   'set.suggestions': 'Gợi ý thanh toán',
   'set.mark_paid': 'Đã trả',
-  'set.all_settled': 'Mọi người đã thanh toán xong 🎉',
+  'set.all_settled': 'Mọi người đã thanh toán xong',
   'set.qr': 'Mã QR',
   'set.no_bank': 'Chưa có tài khoản ngân hàng',
   'set.copy_summary': 'Sao chép tóm tắt',
@@ -261,6 +261,7 @@ export const vi = {
   'stats.by_payer': 'Mỗi người đã trả',
   'stats.by_day': 'Theo ngày',
   'stats.avg': 'Trung bình / người',
+  'stats.daily_avg': 'Trung bình / ngày',
   'stats.empty': 'Chưa có dữ liệu',
 
   'settings.title': 'Cài đặt',

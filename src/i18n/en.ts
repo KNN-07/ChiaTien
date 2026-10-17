@@ -172,7 +172,7 @@ export const en: Record<DictKey, string> = {
 
   'set.suggestions': 'Suggested payments',
   'set.mark_paid': 'Paid',
-  'set.all_settled': 'Everyone is settled up 🎉',
+  'set.all_settled': 'Everyone is settled up',
   'set.qr': 'QR code',
   'set.no_bank': 'No bank account set',
   'set.copy_summary': 'Copy summary',
@@ -263,6 +263,7 @@ export const en: Record<DictKey, string> = {
   'stats.by_payer': 'Paid per person',
   'stats.by_day': 'By day',
   'stats.avg': 'Average / person',
+  'stats.daily_avg': 'Average / day',
   'stats.empty': 'No data yet',
 
   'settings.title': 'Settings',

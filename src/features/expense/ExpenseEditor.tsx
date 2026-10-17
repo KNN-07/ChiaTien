@@ -1,8 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  faArrowDown,
+  faCalculator,
+  faCamera,
+  faCheck,
+  faClone,
+  faDivide,
+  faEquals,
+  faGift,
+  faHandHoldingDollar,
+  faListUl,
+  faPercent,
+  faReceipt,
+  faSliders,
+  faSpinner,
+  faTrash,
+  faUser,
+  faUserPlus,
+  faUsers,
+  type IconDefinition,
+} from '@fortawesome/free-solid-svg-icons';
 import { MemberPicker } from '../../components/MemberPicker';
-import { Page, TopBar } from '../../components/layout';
-import { AmountInput, Avatar, Button, Card, Chip, cx, Empty, Field, Input, Money, Segmented, Select, Textarea, toast } from '../../components/ui';
+import { categoryIcon, Icon } from '../../components/icons';
+import { BottomBar, Page, TopBar } from '../../components/layout';
+import { Alert, AmountInput, Avatar, Button, Card, Chip, cn, Empty, Field, Input, Money, Segmented, Select, Textarea, toast } from '../../components/ui';
 import { resolveRate } from '../../domain/fx';
 import { allocate, convertMinor, currencyDigits, formatMoney, toMinor } from '../../domain/money';
 import { computeShares, totalWithFee, rescale } from '../../domain/split';
@@ -18,6 +40,14 @@ import { getSettings, setSettings, useSettings } from '../../services/settings';
 import { computedBillTotal, emptyExtras, ItemsEditor, newItem } from './ItemsEditor';
 
 const MODES: SplitMode[] = ['equal', 'shares', 'exact', 'percent', 'adjust', 'itemized'];
+const MODE_ICONS: Record<SplitMode, IconDefinition> = {
+  equal: faEquals,
+  shares: faDivide,
+  exact: faCalculator,
+  percent: faPercent,
+  adjust: faSliders,
+  itemized: faListUl,
+};
 
 export function ExpenseEditor() {
   const { tripId, expenseId } = useParams();
@@ -29,7 +59,7 @@ export function ExpenseEditor() {
     return (
       <Page>
         <TopBar title={t('not_found')} back="/" />
-        <Empty icon="🤷" title={t('not_found')} />
+        <Empty icon={faReceipt} title={t('not_found')} />
       </Page>
     );
   return <Editor key={`${expenseId}${search}`} trip={trip} expenseId={expenseId!} />;
@@ -256,369 +286,420 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
   const shareSum = draft.split.entries.reduce((a, e) => a + e.value, 0);
   const diffLabel = (d: number) =>
     d > 0 ? t('exp.remaining', { x: formatMoney(d, draft.currency, locale) }) : t('exp.over', { x: formatMoney(-d, draft.currency, locale) });
+  const photoUrl = pendingUrl || storedUrl;
 
-  return (
-    <Page>
-      <TopBar back={`/trip/${trip.id}`} title={isNew ? t('exp.new') : t('exp.edit')} subtitle={`${trip.emoji ?? ''} ${trip.name}`} />
-      <fieldset disabled={ro} className="min-w-0 space-y-4">
-        {/* Scan */}
-        <Card className={cx(params.get('scan') && isNew && !pendingImage && 'ring-2 ring-teal-500')}>
-          <div className="flex items-center gap-3">
-            <Button variant={params.get('scan') ? 'primary' : 'secondary'} disabled={scanning} onClick={() => fileRef.current?.click()}>
-              📷 {scanning ? t('scan.scanning') : t('scan.pick')}
-            </Button>
-            {(pendingUrl || storedUrl) && (
-              <a href={pendingUrl || storedUrl} target="_blank" rel="noreferrer">
-                <img src={pendingUrl || storedUrl} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-slate-200" />
-              </a>
-            )}
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onPickImage(f);
-              e.target.value = '';
-            }}
-          />
-          {scanning && <div className="mt-3 h-1 w-full overflow-hidden rounded bg-slate-100"><div className="h-1 w-1/3 animate-pulse rounded bg-teal-500" /></div>}
-          {scanMsg && (
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              {scanMsg}{' '}
-              {!settings.apiKey && (
-                <Link to="/settings" className="text-teal-700 underline">
-                  {t('scan.go_settings')}
-                </Link>
-              )}
-            </p>
-          )}
-        </Card>
-
-        {/* Basics */}
-        <Card>
-          <div className="space-y-3">
-            <Segmented
-              value={draft.kind}
-              onChange={(kind) => patch({ kind })}
-              options={[
-                { value: 'expense', label: `🧾 ${t('exp.kind_expense')}` },
-                { value: 'income', label: `💰 ${t('exp.kind_income')}` },
-              ]}
-            />
-            {isIncome && <p className="text-xs text-slate-500">{t('exp.income_hint')}</p>}
-            <Field label={t('exp.title')}>
-              <Input value={draft.title} onChange={(e) => patch({ title: e.target.value })} placeholder={t('exp.title_ph')} />
-            </Field>
-            <div className="grid grid-cols-[1fr_6.5rem] gap-2">
-              <Field label={t('exp.amount')} hint={t('exp.amount_hint')}>
-                <AmountInput
-                  autoFocus={isNew && !params.get('scan')}
-                  value={draft.amount}
-                  currency={draft.currency}
-                  onChange={(amount) => {
-                    if (draft.split.mode === 'itemized') setAmountManual(true);
-                    patch({ amount });
-                  }}
-                  className="text-lg font-semibold"
-                />
-              </Field>
-              <Field label={t('exp.currency')}>
-                <Select value={draft.currency} onChange={(e) => changeCurrency(e.target.value)}>
-                  {currencies.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                  <optgroup label="—">
-                    {COMMON_CURRENCIES.filter((c) => !currencies.includes(c)).map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </optgroup>
-                </Select>
-              </Field>
-            </div>
-            {draft.currency !== trip.baseCurrency && (
-              <p className="-mt-1 text-xs text-slate-500">
-                {rate.rate ? (
-                  <>
-                    ≈ <Money minor={convertMinor(totalWithFee(draft), draft.currency, trip.baseCurrency, rate.rate)} currency={trip.baseCurrency} /> · 1 {draft.currency} ={' '}
-                    {+rate.rate.toPrecision(6)} {trip.baseCurrency} ({t(`fx.${rate.source}` as DictKey)})
-                  </>
-                ) : (
-                  <span className="text-amber-600">⚠️ {t('issue.missing_rate')}</span>
-                )}
-              </p>
-            )}
-            <Field label={t('exp.date')}>
-              <Input type="date" value={draft.date} onChange={(e) => patch({ date: e.target.value })} />
-            </Field>
-            {!isIncome && (
-              <Field label={t('exp.category')}>
-                <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
-                  {CATEGORIES.map((c) => (
-                    <Chip key={c.id} active={draft.category === c.id} onClick={() => patch({ category: c.id })} className="shrink-0">
-                      {c.emoji} {t(`cat.${c.id}` as DictKey)}
-                    </Chip>
-                  ))}
-                </div>
-              </Field>
-            )}
-          </div>
-        </Card>
-
-        {/* Payers */}
-        <Card
-          title={isIncome ? t('exp.received_by') : t('exp.paid_by')}
-          action={
+  const scanCard = (
+    <Card title={t('exp.receipt')} description={!settings.apiKey ? undefined : t('scan.pick')}>
+      <div className="flex items-center gap-3">
+        {photoUrl ? (
+          <a href={photoUrl} target="_blank" rel="noreferrer" className="shrink-0">
+            <img src={photoUrl} alt="" className="h-16 w-16 rounded-md border object-cover" />
+          </a>
+        ) : (
+          <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+            <Icon icon={faReceipt} />
+          </span>
+        )}
+        <div className="grid flex-1 gap-2">
+          <Button variant={params.get('scan') && !photoUrl ? 'default' : 'outline'} disabled={scanning} icon={scanning ? faSpinner : faCamera} onClick={() => fileRef.current?.click()} className={cn(scanning && '[&_svg]:animate-spin')}>
+            {scanning ? t('scan.scanning') : t('exp.scan')}
+          </Button>
+          {(pendingImage || draft.receiptImageId) && (
             <Button
               size="sm"
               variant="ghost"
+              icon={faTrash}
+              className="text-muted-foreground"
               onClick={() => {
-                if (!multiPayer && draft.payers[0]) patch({ payers: [{ ...draft.payers[0], amount: draft.amount }] });
-                setMultiPayer(!multiPayer);
+                setPendingImage(null);
+                patch({ receiptImageId: undefined });
               }}
             >
-              {multiPayer ? t('exp.single_payer') : t('exp.multi_payer')}
+              {t('exp.remove_photo')}
             </Button>
-          }
-        >
-          {!multiPayer ? (
-            <div className="flex flex-wrap gap-1.5">
-              {trip.members.map((m) => (
-                <Chip key={m.id} className="!pl-1" active={draft.payers[0]?.memberId === m.id} onClick={() => patch({ payers: [{ memberId: m.id, amount: draft.amount }] })}>
-                  <Avatar name={m.name} id={m.id} size="sm" kind={m.kind} />
-                  {m.name}
-                </Chip>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {trip.members.map((m) => {
-                const p = draft.payers.find((x) => x.memberId === m.id);
-                const setAmt = (amount: number) =>
-                  patch({
-                    payers: p ? draft.payers.map((x) => (x.memberId === m.id ? { ...x, amount } : x)) : [...draft.payers, { memberId: m.id, amount }],
-                  });
-                return (
-                  <div key={m.id} className="flex items-center gap-2">
-                    <Avatar name={m.name} id={m.id} size="sm" kind={m.kind} />
-                    <span className="w-24 truncate text-sm">{m.name}</span>
-                    <div className="flex-1">
-                      <AmountInput value={p?.amount ?? 0} currency={draft.currency} onChange={setAmt} />
-                    </div>
-                    <Button size="sm" variant="ghost" title={t('exp.fill_rest')} onClick={() => setAmt((p?.amount ?? 0) + draft.amount - payerTotal)}>
-                      ⤵
-                    </Button>
-                  </div>
-                );
-              })}
-              <p className={cx('text-right text-sm', payerTotal === draft.amount ? 'text-emerald-600' : 'text-amber-600')}>
-                {payerTotal === draft.amount ? '✓' : diffLabel(draft.amount - payerTotal)}
-              </p>
-            </div>
           )}
-        </Card>
+        </div>
+      </div>
+      {scanMsg && (
+        <Alert variant={settings.apiKey ? 'default' : 'warning'} className="mt-3">
+          {scanMsg} {!settings.apiKey && <Link to="/settings">{t('scan.go_settings')}</Link>}
+        </Alert>
+      )}
+    </Card>
+  );
 
-        {/* Split */}
-        <Card
-          title={t('exp.split_for')}
-          action={
-            !isIncome &&
-            draft.payers[0] &&
-            !multiPayer && (
-              <Button
-                size="sm"
-                variant="ghost"
-                title={t('exp.treat_hint')}
-                onClick={() => patch({ split: { mode: 'equal', entries: [{ memberId: draft.payers[0].memberId, value: 1 }] } })}
-              >
-                🎁 {t('exp.treat')}
-              </Button>
-            )
-          }
-        >
-          <div className="-mx-1 mb-2 flex gap-1 overflow-x-auto px-1 pb-1">
-            {MODES.map((m) => (
-              <Chip key={m} active={draft.split.mode === m} onClick={() => setMode(m)} className="shrink-0">
-                {t(`mode.${m}` as DictKey)}
-              </Chip>
-            ))}
-          </div>
-          <p className="mb-3 text-xs text-slate-500">{t(`mode.${draft.split.mode}_hint` as DictKey)}</p>
-
-          {draft.split.mode === 'itemized' ? (
-            <>
-              <ItemsEditor trip={trip} draft={draft} onChange={onItemsChange} />
-              {amountManual && computedBillTotal(draft) !== draft.amount && computedBillTotal(draft) > 0 && (
-                <Button
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => {
-                    setAmountManual(false);
-                    patch({ amount: computedBillTotal(draft) });
-                  }}
-                >
-                  {t('exp.use_items_total')}
-                </Button>
+  const previewCard = shares.size > 0 && draft.amount !== 0 && (
+    <Card title={t('exp.preview')}>
+      <ul className="grid gap-2">
+        {[...shares].map(([id, v]) => {
+          const m = trip.members.find((x) => x.id === id);
+          return (
+            <li key={id} className="flex items-center gap-2.5 text-sm">
+              <Avatar name={m?.name ?? '?'} kind={m?.kind} size="sm" className="h-6 w-6 text-[9px]" />
+              <span className="min-w-0 flex-1 truncate">{m?.name}</span>
+              <Money minor={v} currency={draft.currency} className="font-medium" />
+              {draft.currency !== trip.baseCurrency && rate.rate && (
+                <span className="text-xs text-muted-foreground">
+                  ≈ <Money minor={convertMinor(v, draft.currency, trip.baseCurrency, rate.rate)} currency={trip.baseCurrency} />
+                </span>
               )}
-            </>
-          ) : (
-            <>
-              <MemberPicker trip={trip} selected={splitIds} onChange={setSplitIds} date={draft.date} />
-              {draft.split.mode !== 'equal' && draft.split.entries.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {draft.split.entries.map((e) => {
-                    const m = trip.members.find((x) => x.id === e.memberId);
-                    const others = draft.split.entries.filter((x) => x.memberId !== e.memberId).reduce((a, x) => a + x.value, 0);
-                    return (
-                      <div key={e.memberId} className="flex items-center gap-2">
-                        <span className="w-24 truncate text-sm">{m?.name}</span>
-                        <div className="flex-1">
-                          {draft.split.mode === 'exact' || draft.split.mode === 'adjust' ? (
-                            <AmountInput value={e.value} currency={draft.currency} onChange={(v) => setEntry(e.memberId, v)} />
-                          ) : (
-                            <Input
-                              inputMode="decimal"
-                              type="number"
-                              step="any"
-                              min={0}
-                              value={Number.isFinite(e.value) ? e.value : ''}
-                              onChange={(ev) => setEntry(e.memberId, parseFloat(ev.target.value) || 0)}
-                            />
-                          )}
-                        </div>
-                        <span className="w-6 text-sm text-slate-500">{draft.split.mode === 'percent' ? '%' : draft.split.mode === 'shares' ? '×' : ''}</span>
-                        {(draft.split.mode === 'exact' || draft.split.mode === 'percent') && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            title={t('exp.fill_rest')}
-                            onClick={() => setEntry(e.memberId, Math.max(0, (draft.split.mode === 'percent' ? 100 : draft.amount) - others))}
-                          >
-                            ⤵
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {draft.split.mode === 'exact' && shareSum !== draft.amount && (
-                    <p className="text-right text-sm text-amber-600">{diffLabel(draft.amount - shareSum)}</p>
-                  )}
-                  {draft.split.mode === 'percent' && Math.abs(shareSum - 100) > 0.001 && <p className="text-right text-sm text-amber-600">{+shareSum.toFixed(2)}% / 100%</p>}
-                </div>
-              )}
-            </>
-          )}
-        </Card>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
 
-        {/* Preview */}
-        {shares.size > 0 && draft.amount !== 0 && (
-          <Card title={t('exp.preview')}>
-            <ul className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-              {[...shares].map(([id, v]) => {
-                const m = trip.members.find((x) => x.id === id);
-                return (
-                  <li key={id} className="flex items-center gap-2 text-sm">
-                    <Avatar name={m?.name ?? '?'} id={id} size="sm" kind={m?.kind} />
-                    <span className="flex-1 truncate">{m?.name}</span>
-                    <Money minor={v} currency={draft.currency} className="font-medium" />
-                    {draft.currency !== trip.baseCurrency && rate.rate && (
-                      <span className="text-xs text-slate-500">
-                        ≈<Money minor={convertMinor(v, draft.currency, trip.baseCurrency, rate.rate)} currency={trip.baseCurrency} />
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </Card>
-        )}
+  const issueList = issues.length > 0 && (
+    <div className="grid gap-2">
+      {issues.map((i) => (
+        <Alert key={i.code} variant={i.severity === 'error' ? 'destructive' : 'warning'}>
+          {t(`issue.${i.code}` as DictKey, {
+            x: i.diff === undefined ? '' : i.code === 'percent_not_100' ? +i.diff.toFixed(2) : formatMoney(i.diff, draft.currency, locale),
+          })}
+        </Alert>
+      ))}
+    </div>
+  );
 
-        {issues.length > 0 && (
-          <ul className="space-y-1">
-            {issues.map((i) => (
-              <li key={i.code} className={cx('rounded-lg px-3 py-1.5 text-sm', i.severity === 'error' ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-200' : 'bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200')}>
-                {i.severity === 'error' ? '⛔' : '⚠️'}{' '}
-                {t(`issue.${i.code}` as DictKey, {
-                  x:
-                    i.diff === undefined
-                      ? ''
-                      : i.code === 'percent_not_100'
-                        ? +i.diff.toFixed(2)
-                        : formatMoney(i.diff, draft.currency, locale),
-                })}
-              </li>
-            ))}
-          </ul>
-        )}
+  const actions = !ro && (
+    <div className="flex items-center gap-2">
+      {!isNew && (
+        <>
+          <Button variant="ghost" size="icon" className="text-negative hover:text-negative" onClick={del} aria-label={t('delete')} title={t('delete')}>
+            <Icon icon={faTrash} />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={duplicate} aria-label={t('duplicate')} title={t('duplicate')}>
+            <Icon icon={faClone} />
+          </Button>
+        </>
+      )}
+      <div className="flex-1" />
+      {isNew && (
+        <Button variant="outline" onClick={() => save(true)}>
+          {t('save')} + {t('add')}
+        </Button>
+      )}
+      <Button onClick={() => save()} disabled={errors.length > 0} className="min-w-24">
+        {t('save')}
+      </Button>
+    </div>
+  );
 
-        {/* Advanced */}
-        <Card>
-          <details open={!!(draft.feePct || draft.fxRate || draft.note)}>
-            <summary className="cursor-pointer font-semibold">{t('exp.advanced')}</summary>
-            <div className="mt-3 space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('exp.fee_pct')}>
-                  <Input type="number" inputMode="decimal" step="any" min={0} value={draft.feePct ?? ''} onChange={(e) => patch({ feePct: parseFloat(e.target.value) || undefined })} placeholder="0" />
+  return (
+    <Page>
+      <TopBar back={`/trip/${trip.id}`} title={isNew ? t('exp.new') : t('exp.edit')} subtitle={trip.name} />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPickImage(f);
+          e.target.value = '';
+        }}
+      />
+      {people.length === 0 ? (
+        <Empty icon={faUserPlus} title={t('exp.need_members')} />
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+          <fieldset disabled={ro} className="grid min-w-0 gap-6">
+            <div className="xl:hidden">{scanCard}</div>
+
+            {/* Basics */}
+            <Card>
+              <div className="grid gap-4">
+                <Segmented
+                  value={draft.kind}
+                  onChange={(kind) => patch({ kind })}
+                  options={[
+                    { value: 'expense', label: t('exp.kind_expense'), icon: faReceipt },
+                    { value: 'income', label: t('exp.kind_income'), icon: faHandHoldingDollar },
+                  ]}
+                />
+                {isIncome && <p className="text-[0.8rem] text-muted-foreground">{t('exp.income_hint')}</p>}
+                <Field label={t('exp.title')}>
+                  <Input value={draft.title} onChange={(e) => patch({ title: e.target.value })} placeholder={t('exp.title_ph')} />
                 </Field>
-                {draft.currency !== trip.baseCurrency && (
-                  <Field label={t('exp.fx_rate')}>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      min={0}
-                      value={draft.fxRate ?? ''}
-                      onChange={(e) => patch({ fxRate: parseFloat(e.target.value) || undefined })}
-                      placeholder={t('exp.fx_rate_ph', { cur: draft.currency, base: trip.baseCurrency })}
+                <div className="grid grid-cols-[1fr_7rem] gap-3">
+                  <Field label={t('exp.amount')} hint={t('exp.amount_hint')}>
+                    <AmountInput
+                      autoFocus={isNew && !params.get('scan')}
+                      value={draft.amount}
+                      currency={draft.currency}
+                      onChange={(amount) => {
+                        if (draft.split.mode === 'itemized') setAmountManual(true);
+                        patch({ amount });
+                      }}
+                      className="h-10 text-lg font-semibold"
                     />
                   </Field>
+                  <Field label={t('exp.currency')}>
+                    <Select value={draft.currency} onChange={(e) => changeCurrency(e.target.value)}>
+                      {currencies.map((c) => (
+                        <option key={c}>{c}</option>
+                      ))}
+                      <optgroup label="—">
+                        {COMMON_CURRENCIES.filter((c) => !currencies.includes(c)).map((c) => (
+                          <option key={c}>{c}</option>
+                        ))}
+                      </optgroup>
+                    </Select>
+                  </Field>
+                </div>
+                {draft.currency !== trip.baseCurrency &&
+                  (rate.rate ? (
+                    <p className="-mt-2 text-xs text-muted-foreground">
+                      ≈ <Money minor={convertMinor(totalWithFee(draft), draft.currency, trip.baseCurrency, rate.rate)} currency={trip.baseCurrency} className="font-medium text-foreground" /> · 1{' '}
+                      {draft.currency} = {+rate.rate.toPrecision(6)} {trip.baseCurrency} · {t(`fx.${rate.source}` as DictKey)}
+                    </p>
+                  ) : (
+                    <Alert variant="warning">{t('issue.missing_rate')}</Alert>
+                  ))}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t('exp.date')}>
+                    <Input type="date" value={draft.date} onChange={(e) => patch({ date: e.target.value })} />
+                  </Field>
+                  {!isIncome && (
+                    <Field label={t('exp.category')}>
+                      <Select value={draft.category} onChange={(e) => patch({ category: e.target.value })}>
+                        {CATEGORIES.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {t(`cat.${c.id}` as DictKey)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
+                </div>
+                {!isIncome && (
+                  <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1">
+                    {CATEGORIES.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        title={t(`cat.${c.id}` as DictKey)}
+                        onClick={() => patch({ category: c.id })}
+                        className={cn(
+                          'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-sm transition-colors',
+                          draft.category === c.id ? 'border-primary bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        )}
+                      >
+                        <Icon icon={categoryIcon(c.id)} />
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-              <Field label={t('exp.note')}>
-                <Textarea value={draft.note ?? ''} onChange={(e) => patch({ note: e.target.value })} />
-              </Field>
-              {(pendingImage || draft.receiptImageId) && (
+            </Card>
+
+            {/* Payers */}
+            <Card
+              title={isIncome ? t('exp.received_by') : t('exp.paid_by')}
+              action={
                 <Button
                   size="sm"
                   variant="ghost"
+                  icon={multiPayer ? faUser : faUsers}
                   onClick={() => {
-                    setPendingImage(null);
-                    patch({ receiptImageId: undefined });
+                    if (!multiPayer && draft.payers[0]) patch({ payers: [{ ...draft.payers[0], amount: draft.amount }] });
+                    setMultiPayer(!multiPayer);
                   }}
                 >
-                  🗑️ {t('exp.remove_photo')}
+                  {multiPayer ? t('exp.single_payer') : t('exp.multi_payer')}
                 </Button>
+              }
+            >
+              {!multiPayer ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {trip.members.map((m) => (
+                    <Chip key={m.id} className="pl-1.5" active={draft.payers[0]?.memberId === m.id} onClick={() => patch({ payers: [{ memberId: m.id, amount: draft.amount }] })}>
+                      <Avatar
+                        name={m.name}
+                        size="sm"
+                        kind={m.kind}
+                        className={draft.payers[0]?.memberId === m.id ? 'border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground' : ''}
+                      />
+                      {m.name}
+                    </Chip>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {trip.members.map((m) => {
+                    const p = draft.payers.find((x) => x.memberId === m.id);
+                    const setAmt = (amount: number) =>
+                      patch({
+                        payers: p ? draft.payers.map((x) => (x.memberId === m.id ? { ...x, amount } : x)) : [...draft.payers, { memberId: m.id, amount }],
+                      });
+                    return (
+                      <div key={m.id} className="flex items-center gap-2.5">
+                        <Avatar name={m.name} kind={m.kind} size="sm" className="h-7 w-7 text-[10px]" />
+                        <span className="w-24 truncate text-sm sm:w-32">{m.name}</span>
+                        <div className="flex-1">
+                          <AmountInput value={p?.amount ?? 0} currency={draft.currency} onChange={setAmt} />
+                        </div>
+                        <Button size="icon" variant="ghost" title={t('exp.fill_rest')} aria-label={t('exp.fill_rest')} onClick={() => setAmt((p?.amount ?? 0) + draft.amount - payerTotal)}>
+                          <Icon icon={faArrowDown} className="text-xs" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <p className={cn('text-right text-sm font-medium', payerTotal === draft.amount ? 'text-positive' : 'text-warning')}>
+                    {payerTotal === draft.amount ? <Icon icon={faCheck} /> : diffLabel(draft.amount - payerTotal)}
+                  </p>
+                </div>
               )}
-            </div>
-          </details>
-        </Card>
-      </fieldset>
+            </Card>
 
-      {!ro && (
-        <div className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95">
-          <div className="mx-auto flex max-w-2xl gap-2">
-            {!isNew && (
-              <>
-                <Button variant="ghost" className="text-rose-600" onClick={del}>
-                  🗑️
-                </Button>
-                <Button variant="ghost" onClick={duplicate} title={t('duplicate')}>
-                  📑
-                </Button>
-              </>
-            )}
-            <div className="flex-1" />
-            {isNew && <Button onClick={() => save(true)}>{t('save')} + {t('add')}</Button>}
-            <Button variant="primary" onClick={() => save()} disabled={errors.length > 0} className="min-w-28">
-              {t('save')}
-            </Button>
-          </div>
+            {/* Split */}
+            <Card
+              title={t('exp.split_for')}
+              description={t(`mode.${draft.split.mode}_hint` as DictKey)}
+              action={
+                !isIncome &&
+                draft.payers[0] &&
+                !multiPayer && (
+                  <Button size="sm" variant="ghost" icon={faGift} title={t('exp.treat_hint')} onClick={() => patch({ split: { mode: 'equal', entries: [{ memberId: draft.payers[0].memberId, value: 1 }] } })}>
+                    {t('exp.treat')}
+                  </Button>
+                )
+              }
+            >
+              <div className="no-scrollbar -mx-1 mb-4 overflow-x-auto px-1">
+                <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground">
+                  {MODES.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setMode(m)}
+                      className={cn(
+                        'inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-sm font-medium transition-all',
+                        draft.split.mode === m ? 'bg-background text-foreground shadow' : 'hover:text-foreground',
+                      )}
+                    >
+                      <Icon icon={MODE_ICONS[m]} className="text-[11px]" />
+                      {t(`mode.${m}` as DictKey)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {draft.split.mode === 'itemized' ? (
+                <>
+                  <ItemsEditor trip={trip} draft={draft} onChange={onItemsChange} />
+                  {amountManual && computedBillTotal(draft) !== draft.amount && computedBillTotal(draft) > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => {
+                        setAmountManual(false);
+                        patch({ amount: computedBillTotal(draft) });
+                      }}
+                    >
+                      {t('exp.use_items_total')}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <MemberPicker trip={trip} selected={splitIds} onChange={setSplitIds} date={draft.date} />
+                  {draft.split.mode !== 'equal' && draft.split.entries.length > 0 && (
+                    <div className="mt-4 grid gap-2 border-t pt-4">
+                      {draft.split.entries.map((e) => {
+                        const m = trip.members.find((x) => x.id === e.memberId);
+                        const others = draft.split.entries.filter((x) => x.memberId !== e.memberId).reduce((a, x) => a + x.value, 0);
+                        return (
+                          <div key={e.memberId} className="flex items-center gap-2.5">
+                            <Avatar name={m?.name ?? '?'} kind={m?.kind} size="sm" className="h-7 w-7 text-[10px]" />
+                            <span className="w-24 truncate text-sm sm:w-32">{m?.name}</span>
+                            <div className="relative flex-1">
+                              {draft.split.mode === 'exact' || draft.split.mode === 'adjust' ? (
+                                <AmountInput value={e.value} currency={draft.currency} onChange={(v) => setEntry(e.memberId, v)} />
+                              ) : (
+                                <>
+                                  <Input
+                                    inputMode="decimal"
+                                    type="number"
+                                    step="any"
+                                    min={0}
+                                    value={Number.isFinite(e.value) ? e.value : ''}
+                                    onChange={(ev) => setEntry(e.memberId, parseFloat(ev.target.value) || 0)}
+                                    className="pr-8"
+                                  />
+                                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                                    {draft.split.mode === 'percent' ? '%' : '×'}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            {(draft.split.mode === 'exact' || draft.split.mode === 'percent') && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title={t('exp.fill_rest')}
+                                aria-label={t('exp.fill_rest')}
+                                onClick={() => setEntry(e.memberId, Math.max(0, (draft.split.mode === 'percent' ? 100 : draft.amount) - others))}
+                              >
+                                <Icon icon={faArrowDown} className="text-xs" />
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {draft.split.mode === 'exact' && shareSum !== draft.amount && <p className="text-right text-sm font-medium text-warning">{diffLabel(draft.amount - shareSum)}</p>}
+                      {draft.split.mode === 'percent' && Math.abs(shareSum - 100) > 0.001 && <p className="text-right text-sm font-medium text-warning">{+shareSum.toFixed(2)}% / 100%</p>}
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+
+            <div className="grid gap-6 xl:hidden">
+              {previewCard}
+              {issueList}
+            </div>
+
+            {/* Advanced */}
+            <Card title={t('exp.advanced')}>
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label={t('exp.fee_pct')}>
+                    <Input type="number" inputMode="decimal" step="any" min={0} value={draft.feePct ?? ''} onChange={(e) => patch({ feePct: parseFloat(e.target.value) || undefined })} placeholder="0" />
+                  </Field>
+                  {draft.currency !== trip.baseCurrency && (
+                    <Field label={t('exp.fx_rate')}>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        step="any"
+                        min={0}
+                        value={draft.fxRate ?? ''}
+                        onChange={(e) => patch({ fxRate: parseFloat(e.target.value) || undefined })}
+                        placeholder={t('exp.fx_rate_ph', { cur: draft.currency, base: trip.baseCurrency })}
+                      />
+                    </Field>
+                  )}
+                </div>
+                <Field label={t('exp.note')}>
+                  <Textarea value={draft.note ?? ''} onChange={(e) => patch({ note: e.target.value })} />
+                </Field>
+              </div>
+            </Card>
+          </fieldset>
+
+          <aside className="hidden gap-6 xl:sticky xl:top-20 xl:grid">
+            {scanCard}
+            {previewCard}
+            {issueList}
+            {actions && <Card>{actions}</Card>}
+          </aside>
         </div>
       )}
-      {people.length === 0 && <Empty icon="👥" title={t('exp.need_members')} />}
+      {actions && <BottomBar className="xl:hidden">{actions}</BottomBar>}
     </Page>
   );
 }

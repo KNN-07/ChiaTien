@@ -17,7 +17,7 @@ export function newTrip(name: string, baseCurrency = 'VND'): Trip {
   return {
     id: uid(),
     name,
-    emoji: '🏝️',
+    emoji: 'suitcase',
     baseCurrency,
     currencies: [baseCurrency],
     members: [],
@@ -99,25 +99,24 @@ export function cloneTrip(trip: Trip, name: string): Trip {
   return { ...structuredClone(trip), id: uid(), name, locked: false, tombstones: {}, createdAt: now, updatedAt: now };
 }
 
-export const CATEGORIES: { id: string; emoji: string }[] = [
-  { id: 'food', emoji: '🍜' },
-  { id: 'drinks', emoji: '🍺' },
-  { id: 'coffee', emoji: '☕' },
-  { id: 'lodging', emoji: '🏨' },
-  { id: 'transport', emoji: '🚕' },
-  { id: 'flight', emoji: '✈️' },
-  { id: 'fuel', emoji: '⛽' },
-  { id: 'tickets', emoji: '🎟️' },
-  { id: 'activities', emoji: '🏄' },
-  { id: 'shopping', emoji: '🛍️' },
-  { id: 'groceries', emoji: '🛒' },
-  { id: 'gifts', emoji: '🎁' },
-  { id: 'health', emoji: '💊' },
-  { id: 'fees', emoji: '🧾' },
-  { id: 'other', emoji: '📦' },
+export const CATEGORIES: { id: string }[] = [
+  { id: 'food' },
+  { id: 'drinks' },
+  { id: 'coffee' },
+  { id: 'lodging' },
+  { id: 'transport' },
+  { id: 'flight' },
+  { id: 'fuel' },
+  { id: 'tickets' },
+  { id: 'activities' },
+  { id: 'shopping' },
+  { id: 'groceries' },
+  { id: 'gifts' },
+  { id: 'health' },
+  { id: 'fees' },
+  { id: 'other' },
 ];
 
-export const categoryEmoji = (id: string) => CATEGORIES.find((c) => c.id === id)?.emoji ?? '📦';
 
 export const COMMON_CURRENCIES = [
   'VND', 'USD', 'EUR', 'THB', 'JPY', 'KRW', 'SGD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR', 'CNY', 'HKD', 'TWD',

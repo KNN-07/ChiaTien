@@ -1,5 +1,7 @@
+import { faArrowRight, faCheck, faCircleCheck, faCopy, faPlus, faQrcode } from '@fortawesome/free-solid-svg-icons';
 import { useMemo, useState } from 'react';
-import { AmountInput, Avatar, Button, Card, Field, Input, Money, Select, Sheet, Toggle, toast } from '../../components/ui';
+import { Icon } from '../../components/icons';
+import { Alert, AmountInput, Avatar, Button, Card, cn, Field, Input, Money, Select, Separator, Sheet, Toggle, toast } from '../../components/ui';
 import { computeBalances, entityName, transferInBase } from '../../domain/balances';
 import { currencyDigits, formatMoney } from '../../domain/money';
 import { planSettlement, type Settlement } from '../../domain/settle';
@@ -73,11 +75,7 @@ export function SettleTab({ trip }: { trip: Trip }) {
       lines.push(t('set.summary_transfers'));
       plan.transfers.forEach((x) => {
         const bank = entityBank(trip, x.to);
-        lines.push(
-          `➡️ ${entityName(trip, x.from)} → ${entityName(trip, x.to)}: ${fmt(x.amount, x.currency)}${
-            bank ? ` (${bankName(bank.bin)} ${bank.account}${bank.holder ? ` ${bank.holder}` : ''})` : ''
-          }`,
-        );
+        lines.push(`→ ${entityName(trip, x.from)} → ${entityName(trip, x.to)}: ${fmt(x.amount, x.currency)}${bank ? ` (${bankName(bank.bin)} ${bank.account}${bank.holder ? ` ${bank.holder}` : ''})` : ''}`);
       });
     }
     return lines.join('\n');
@@ -87,55 +85,110 @@ export function SettleTab({ trip }: { trip: Trip }) {
   const currencies = [...new Set([trip.baseCurrency, ...trip.currencies])];
 
   return (
-    <div className="space-y-4">
-      <Card
-        title={t('set.suggestions')}
-        action={
-          <Button size="sm" onClick={async () => toast((await copyText(summary())) ? t('copied') : summary())}>
-            📋 {t('set.copy_summary')}
-          </Button>
-        }
-      >
-        {!plan.rate ? (
-          <p className="text-sm text-amber-700">{t('set.no_rate', { cur: plan.currency })}</p>
-        ) : plan.transfers.length === 0 ? (
-          <p className="py-6 text-center text-slate-600 dark:text-slate-300">{t('set.all_settled')}</p>
-        ) : (
-          <ul className="space-y-2">
-            {plan.transfers.map((x, i) => {
-              const bank = entityBank(trip, x.to);
-              return (
-                <li key={i} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-900/50">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Avatar name={entityName(trip, x.from)} id={x.from} size="sm" />
-                    <span className="truncate font-medium">{entityName(trip, x.from)}</span>
-                    <span className="text-slate-400">→</span>
-                    <Avatar name={entityName(trip, x.to)} id={x.to} size="sm" />
-                    <span className="truncate font-medium">{entityName(trip, x.to)}</span>
-                  </div>
-                  <Money minor={x.amount} currency={x.currency} className="font-bold text-teal-700 dark:text-teal-400" />
-                  <div className="flex w-full justify-end gap-2 sm:w-auto">
-                    {bank && x.currency === 'VND' && (
-                      <Button size="sm" onClick={() => setQr(x)}>
-                        🔳 {t('set.qr')}
-                      </Button>
-                    )}
-                    {!ro && (
-                      <Button size="sm" variant="primary" onClick={() => markPaid(x)}>
-                        ✓ {t('set.mark_paid')}
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {s.roundTo > 1 && plan.transfers.length > 0 && <p className="mt-2 text-xs text-slate-500">{t('set.rounded', { x: fmt(s.roundTo, plan.currency) })}</p>}
-      </Card>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+      <div className="grid gap-6">
+        <Card
+          title={t('set.suggestions')}
+          description={s.roundTo > 1 && plan.transfers.length > 0 ? t('set.rounded', { x: fmt(s.roundTo, plan.currency) }) : undefined}
+          action={
+            <Button size="sm" variant="outline" icon={faCopy} onClick={async () => toast((await copyText(summary())) ? t('copied') : summary())}>
+              <span className="hidden sm:inline">{t('set.copy_summary')}</span>
+            </Button>
+          }
+        >
+          {!plan.rate ? (
+            <Alert variant="warning">{t('set.no_rate', { cur: plan.currency })}</Alert>
+          ) : plan.transfers.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
+              <Icon icon={faCircleCheck} className="text-2xl text-positive" />
+              {t('set.all_settled')}
+            </div>
+          ) : (
+            <ul className="divide-y rounded-lg border">
+              {plan.transfers.map((x, i) => {
+                const bank = entityBank(trip, x.to);
+                return (
+                  <li key={i} className="flex flex-wrap items-center gap-3 p-3 sm:flex-nowrap">
+                    <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                      <Avatar name={entityName(trip, x.from)} className="h-7 w-7 text-[10px]" />
+                      <span className="truncate font-medium">{entityName(trip, x.from)}</span>
+                      <Icon icon={faArrowRight} className="text-xs text-muted-foreground" />
+                      <Avatar name={entityName(trip, x.to)} className="h-7 w-7 text-[10px]" />
+                      <span className="truncate font-medium">{entityName(trip, x.to)}</span>
+                    </div>
+                    <Money minor={x.amount} currency={x.currency} className="font-semibold" />
+                    <div className="flex gap-2">
+                      {bank && x.currency === 'VND' && (
+                        <Button size="sm" variant="outline" icon={faQrcode} onClick={() => setQr(x)}>
+                          {t('set.qr')}
+                        </Button>
+                      )}
+                      {!ro && (
+                        <Button size="sm" icon={faCheck} onClick={() => markPaid(x)}>
+                          {t('set.mark_paid')}
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
 
-      <Card title={t('set.options')}>
-        <div className="grid grid-cols-2 gap-2">
+        <Card
+          title={t('set.history')}
+          action={
+            !ro && (
+              <Button
+                size="sm"
+                variant="outline"
+                icon={faPlus}
+                onClick={() =>
+                  setTransfer({
+                    id: uid(),
+                    from: trip.members[0]?.id ?? '',
+                    to: trip.members[1]?.id ?? '',
+                    amount: 0,
+                    currency: trip.settings.settleCurrency || trip.baseCurrency,
+                    date: today(),
+                    updatedAt: 0,
+                  })
+                }
+              >
+                {t('set.record_transfer')}
+              </Button>
+            )
+          }
+        >
+          {sorted.length === 0 ? (
+            <p className="text-sm text-muted-foreground">—</p>
+          ) : (
+            <ul className="-mx-2 grid">
+              {sorted.map((x) => (
+                <li key={x.id}>
+                  <button disabled={ro} onClick={() => setTransfer(x)} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-muted/60">
+                    <span className="w-12 text-xs tabular-nums text-muted-foreground">{x.date.slice(5)}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {memberName(trip, x.from)} → {memberName(trip, x.to)}
+                      {x.note && <span className="text-muted-foreground"> · {x.note}</span>}
+                    </span>
+                    <Money minor={x.amount} currency={x.currency} className="font-medium" />
+                    {x.currency !== trip.baseCurrency && (
+                      <span className="hidden text-xs text-muted-foreground sm:inline">
+                        ≈ <Money minor={transferInBase(trip, x) ?? 0} currency={trip.baseCurrency} />
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <Card title={t('set.options')} className="xl:sticky xl:top-20">
+        <div className="grid grid-cols-2 gap-3">
           <Field label={t('set.currency')}>
             <Select
               disabled={ro}
@@ -157,7 +210,8 @@ export function SettleTab({ trip }: { trip: Trip }) {
             </Select>
           </Field>
         </div>
-        <div className="mt-2 divide-y divide-slate-100 dark:divide-slate-700/60">
+        <Separator className="mt-4" />
+        <div className="divide-y">
           <Toggle disabled={ro} checked={s.simplify} onChange={(v) => setS({ simplify: v })} label={t('set.simplify')} hint={t('set.simplify_hint')} />
           <Toggle
             disabled={ro || trip.households.length === 0}
@@ -168,54 +222,6 @@ export function SettleTab({ trip }: { trip: Trip }) {
           />
           <Toggle disabled={ro} checked={s.guestToHost} onChange={(v) => setS({ guestToHost: v })} label={t('set.guest_host')} />
         </div>
-      </Card>
-
-      <Card
-        title={t('set.history')}
-        action={
-          !ro && (
-            <Button
-              size="sm"
-              onClick={() =>
-                setTransfer({
-                  id: uid(),
-                  from: trip.members[0]?.id ?? '',
-                  to: trip.members[1]?.id ?? '',
-                  amount: 0,
-                  currency: trip.settings.settleCurrency || trip.baseCurrency,
-                  date: today(),
-                  updatedAt: 0,
-                })
-              }
-            >
-              + {t('set.record_transfer')}
-            </Button>
-          )
-        }
-      >
-        {sorted.length === 0 ? (
-          <p className="text-sm text-slate-500">—</p>
-        ) : (
-          <ul className="divide-y divide-slate-100 dark:divide-slate-700/60">
-            {sorted.map((x) => (
-              <li key={x.id}>
-                <button disabled={ro} onClick={() => setTransfer(x)} className="flex w-full items-center gap-2 py-2 text-left text-sm">
-                  <span className="text-slate-500">{x.date.slice(5)}</span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {memberName(trip, x.from)} → {memberName(trip, x.to)}
-                    {x.note && <span className="text-slate-500"> · {x.note}</span>}
-                  </span>
-                  <Money minor={x.amount} currency={x.currency} className="font-medium" />
-                  {x.currency !== trip.baseCurrency && (
-                    <span className="text-xs text-slate-500">
-                      ≈<Money minor={transferInBase(trip, x) ?? 0} currency={trip.baseCurrency} />
-                    </span>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </Card>
 
       {qr && <QrSheet trip={trip} s={qr} onClose={() => setQr(null)} />}
@@ -232,14 +238,13 @@ function QrSheet({ trip, s, onClose }: { trip: Trip; s: Settlement; onClose: () 
     .replace(/[̀-ͯ]/g, '')
     .replace(/đ/gi, 'd');
   return (
-    <Sheet open onClose={onClose} title={`${entityName(trip, s.from)} → ${entityName(trip, s.to)}`}>
-      <div className="flex flex-col items-center gap-2 text-center">
-        <img src={vietQrUrl(bank, s.amount, info)} alt="VietQR" className="w-64 max-w-full rounded-xl bg-white p-2" />
-        <Money minor={s.amount} currency={s.currency} className="text-xl font-bold" />
-        <p className="text-sm">
+    <Sheet open onClose={onClose} title={`${entityName(trip, s.from)} → ${entityName(trip, s.to)}`} description={t('set.qr_hint')}>
+      <div className="flex flex-col items-center gap-3 pb-2 text-center">
+        <img src={vietQrUrl(bank, s.amount, info)} alt="VietQR" className="w-64 max-w-full rounded-lg border bg-white p-2" />
+        <Money minor={s.amount} currency={s.currency} className="text-2xl font-bold tracking-tight" />
+        <p className="text-sm text-muted-foreground">
           {bankName(bank.bin)} · {bank.account} {bank.holder && `· ${bank.holder}`}
         </p>
-        <p className="text-xs text-slate-500">{t('set.qr_hint')}</p>
       </div>
     </Sheet>
   );
@@ -267,21 +272,21 @@ export function TransferSheet({ trip, value, onClose }: { trip: Trip; value: Tra
       footer={
         <>
           {exists && (
-            <Button variant="ghost" className="mr-auto text-rose-600" onClick={del}>
+            <Button variant="ghost" className={cn('mr-auto text-negative hover:text-negative')} onClick={del}>
               {t('delete')}
             </Button>
           )}
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="outline" onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button variant="primary" disabled={!valid} onClick={save}>
+          <Button disabled={!valid} onClick={save}>
             {t('save')}
           </Button>
         </>
       }
     >
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-4">
+        <div className="grid grid-cols-2 gap-3">
           <Field label={t('set.from')}>
             <Select value={x.from} onChange={(e) => setX({ ...x, from: e.target.value })}>
               {trip.members.map((m) => (
@@ -301,7 +306,7 @@ export function TransferSheet({ trip, value, onClose }: { trip: Trip; value: Tra
             </Select>
           </Field>
         </div>
-        <div className="grid grid-cols-[1fr_auto] gap-2">
+        <div className="grid grid-cols-[1fr_7rem] gap-3">
           <Field label={t('exp.amount')}>
             <AmountInput value={x.amount} currency={x.currency} onChange={(amount) => setX({ ...x, amount })} />
           </Field>

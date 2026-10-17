@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Page, TopBar } from '../components/layout';
-import { Button, Card, Empty, Money } from '../components/ui';
+import { faCodeMerge, faFloppyDisk, faLinkSlash, faPlus, faRotate } from '@fortawesome/free-solid-svg-icons';
+import { TripIcon } from '../components/icons';
+import { Alert, Button, Card, Empty, Money, Separator } from '../components/ui';
 import { computeBalances } from '../domain/balances';
 import { keepLocalImages, mergeTrips } from '../domain/merge';
 import { uid } from '../domain/trip';
@@ -26,9 +28,9 @@ export function ImportPage() {
 
   if (!incoming)
     return (
-      <Page>
+      <Page wide={false}>
         <TopBar title={t('import.title')} back="/" />
-        <Empty icon="🔗" title={t('import.invalid')} />
+        <Empty icon={faLinkSlash} title={t('import.invalid')} />
       </Page>
     );
 
@@ -40,41 +42,43 @@ export function ImportPage() {
   };
 
   return (
-    <Page>
+    <Page wide={false}>
       <TopBar title={t('import.title')} back="/" />
       <Card>
-        <div className="flex items-center gap-3">
-          <span className="text-4xl">{incoming.emoji ?? '🏝️'}</span>
-          <div className="flex-1">
-            <p className="font-semibold">
-              {t('import.found', { name: incoming.name, m: incoming.members.length, e: incoming.expenses.length })}
+        <div className="flex items-center gap-4">
+          <TripIcon icon={incoming.emoji} className="h-12 w-12 text-lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-lg font-semibold tracking-tight">{incoming.name}</p>
+            <p className="text-sm text-muted-foreground">
+              {t('trips.members_count', { n: incoming.members.length })} · {t('trips.expenses_count', { n: incoming.expenses.length })}
             </p>
-            <Money minor={total} currency={incoming.baseCurrency} className="text-teal-700 dark:text-teal-400" />
           </div>
+          <Money minor={total} currency={incoming.baseCurrency} className="text-lg font-semibold" />
         </div>
-        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{incoming.members.map((m) => m.name).join(', ')}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {local ? (
-            <>
-              <p className="w-full text-sm text-amber-700 dark:text-amber-300">{t('import.exists')}</p>
-              <Button variant="primary" disabled={busy} onClick={() => go(keepLocalImages(local, mergeTrips(local, incoming)))}>
-                🔀 {t('import.merge')}
+        <p className="mt-4 text-sm text-muted-foreground">{incoming.members.map((m) => m.name).join(', ')}</p>
+        <Separator className="my-4" />
+        {local ? (
+          <div className="grid gap-3">
+            <Alert variant="warning">{t('import.exists')}</Alert>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={busy} icon={faCodeMerge} onClick={() => go(keepLocalImages(local, mergeTrips(local, incoming)))}>
+                {t('import.merge')}
               </Button>
-              <Button disabled={busy} onClick={() => go(keepLocalImages(local, incoming))}>
-                ♻️ {t('import.replace')}
+              <Button variant="outline" disabled={busy} icon={faRotate} onClick={() => go(keepLocalImages(local, incoming))}>
+                {t('import.replace')}
               </Button>
-              <Button disabled={busy} onClick={() => go({ ...incoming, id: uid(), tombstones: {} })}>
-                ➕ {t('import.as_new')}
+              <Button variant="outline" disabled={busy} icon={faPlus} onClick={() => go({ ...incoming, id: uid(), tombstones: {} })}>
+                {t('import.as_new')}
               </Button>
-            </>
-          ) : (
-            local === null && (
-              <Button variant="primary" disabled={busy} onClick={() => go(incoming)}>
-                💾 {t('import.save')}
-              </Button>
-            )
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          local === null && (
+            <Button disabled={busy} icon={faFloppyDisk} onClick={() => go(incoming)}>
+              {t('import.save')}
+            </Button>
+          )
+        )}
       </Card>
     </Page>
   );
