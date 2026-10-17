@@ -37,9 +37,14 @@ export function TripsPage() {
         title={<span>💸 {t('app.name')}</span>}
         subtitle={t('app.tagline')}
         right={
-          <IconLink to="/settings" label={t('settings.title')}>
-            ⚙️
-          </IconLink>
+          <>
+            <IconLink to="/assistant" label={t('ai.open')}>
+              ✨
+            </IconLink>
+            <IconLink to="/settings" label={t('settings.title')}>
+              ⚙️
+            </IconLink>
+          </>
         }
       />
       {trips === undefined ? null : trips.length === 0 ? (

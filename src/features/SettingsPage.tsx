@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { Page, TopBar } from '../components/layout';
-import { Button, Card, Field, Input, Segmented, toast } from '../components/ui';
+import { Button, Card, Field, Input, Segmented, Toggle, toast } from '../components/ui';
 import { useT } from '../i18n';
 import { db, saveTrip } from '../services/db';
 import { listGemmaModels } from '../services/gemma';
-import { DEFAULT_MODEL, setSettings, useSettings, type Lang, type Theme } from '../services/settings';
+import { DEFAULT_MODEL, SUGGESTED_MODELS, setSettings, useSettings, type Lang, type Theme } from '../services/settings';
 import { downloadFile, parseTrip } from '../services/share';
 
 export function SettingsPage() {
@@ -109,7 +109,7 @@ export function SettingsPage() {
               <div className="flex gap-2">
                 <Input list="gemma-models" value={s.model} onChange={(e) => setSettings({ model: e.target.value.trim() || DEFAULT_MODEL })} />
                 <datalist id="gemma-models">
-                  {(models.length ? models : ['gemma-3-27b-it', 'gemma-3-12b-it', 'gemma-3-4b-it']).map((m) => (
+                  {(models.length ? models : SUGGESTED_MODELS).map((m) => (
                     <option key={m} value={m} />
                   ))}
                 </datalist>
@@ -118,6 +118,7 @@ export function SettingsPage() {
                 </Button>
               </div>
             </Field>
+            <Toggle checked={s.thinking} onChange={(thinking) => setSettings({ thinking })} label={t('settings.thinking')} hint={t('settings.thinking_hint')} />
             {models.length > 0 && (
               <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
                 {models.map((m) => (

@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { AiError, generate, isAuthError, textOf, type Part } from './ai';
 import { blobToBase64 } from './image';
 
-const API = 'https://generativelanguage.googleapis.com/v1beta';
+export { listModels as listGemmaModels } from './ai';
 
 const num = z.preprocess((v) => {
   if (v === null || v === undefined || v === '') return 0;
@@ -37,28 +38,44 @@ export const ReceiptSchema = z.object({
 
 export type Receipt = z.infer<typeof ReceiptSchema>;
 
-const PROMPT = (hintCurrency: string, categories: string[]) => `You are a receipt parser. Read the attached receipt / bill photo and return ONLY one JSON object, no markdown, no explanation.
+/** JSON Schema for Gemini structured output. */
+const receiptJsonSchema = (categories: string[]) => ({
+  type: 'object',
+  properties: {
+    merchant: { type: 'string', description: 'Shop / restaurant name' },
+    date: { type: 'string', description: 'Purchase date YYYY-MM-DD, or empty' },
+    currency: { type: 'string', description: 'ISO 4217 code' },
+    category: { type: 'string', enum: categories },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          qty: { type: 'number' },
+          unitPrice: { type: 'number' },
+          total: { type: 'number', description: 'Line total after item discounts' },
+        },
+        required: ['name', 'total'],
+      },
+    },
+    subtotal: { type: 'number' },
+    tax: { type: 'number' },
+    serviceCharge: { type: 'number' },
+    tip: { type: 'number' },
+    discount: { type: 'number', description: 'Positive number' },
+    total: { type: 'number', description: 'Final amount paid' },
+  },
+  required: ['merchant', 'currency', 'items', 'total'],
+});
 
-Schema:
-{
-  "merchant": string,            // shop / restaurant name
-  "date": "YYYY-MM-DD" | "",     // purchase date if visible
-  "currency": string,            // ISO 4217 code, e.g. VND, THB, JPY, USD. If unclear use "${hintCurrency}"
-  "category": string,            // one of: ${categories.join(', ')}
-  "items": [ { "name": string, "qty": number, "unitPrice": number, "total": number } ],
-  "subtotal": number,
-  "tax": number,                 // VAT / tax amount (0 if included in prices or absent)
-  "serviceCharge": number,       // service charge amount (0 if none)
-  "tip": number,
-  "discount": number,            // positive number for any discount / voucher
-  "total": number                // final amount actually paid
-}
-
-Rules:
-- All amounts are plain numbers in the currency's normal units, no thousands separators (e.g. "120.000đ" -> 120000, "฿1,250.50" -> 1250.5).
-- "total" of an item is the line total (qty × unit price after item-level discounts).
-- Keep item names short, in the original language.
-- If a value is missing use 0.`;
+const PROMPT = (hintCurrency: string) => `Read this receipt / bill photo and extract it as JSON.
+- Currency: ISO 4217 code (VND, THB, JPY, USD…). If unclear use "${hintCurrency}".
+- Amounts are plain numbers in normal units, no thousands separators ("120.000đ" → 120000, "฿1,250.50" → 1250.5).
+- Item "total" = line total (qty × unit price after item discounts). Keep names short, original language.
+- tax = VAT/tax amount only if added on top (0 if included); serviceCharge, tip, discount (positive) or 0.
+- total = final amount actually paid. Missing values → 0.
+Return only the JSON object.`;
 
 function extractJson(text: string): unknown {
   const cleaned = text.replace(/```(?:json)?/gi, '').trim();
@@ -68,24 +85,15 @@ function extractJson(text: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-interface GenResponse {
-  candidates?: { content?: { parts?: { text?: string }[] } }[];
-  error?: { message?: string };
-}
-
-async function generate(apiKey: string, model: string, parts: unknown[]): Promise<string> {
-  const r = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
-    }),
-  });
-  const data = (await r.json().catch(() => ({}))) as GenResponse;
-  if (!r.ok) throw new Error(data.error?.message ?? `HTTP ${r.status}`);
-  return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
-}
+/**
+ * Structured output first (responseJsonSchema); if the model/API rejects it,
+ * fall back to JSON mime type only, then to plain prompting.
+ */
+const MODES: Record<string, unknown>[] = [
+  { responseMimeType: 'application/json', responseJsonSchema: undefined as unknown },
+  { responseMimeType: 'application/json' },
+  {},
+];
 
 export async function scanReceipt(opts: {
   apiKey: string;
@@ -93,34 +101,26 @@ export async function scanReceipt(opts: {
   image: Blob;
   hintCurrency: string;
   categories: string[];
+  thinking?: boolean;
 }): Promise<Receipt> {
   const data = await blobToBase64(opts.image);
-  const parts = [
-    { text: PROMPT(opts.hintCurrency, opts.categories) },
-    { inline_data: { mime_type: opts.image.type || 'image/jpeg', data } },
-  ];
+  const parts: Part[] = [{ text: PROMPT(opts.hintCurrency) }, { inlineData: { mimeType: opts.image.type || 'image/jpeg', data } }];
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (const mode of MODES) {
+    const generationConfig = 'responseJsonSchema' in mode ? { ...mode, responseJsonSchema: receiptJsonSchema(opts.categories) } : mode;
     try {
-      const text = await generate(opts.apiKey, opts.model, parts);
-      return ReceiptSchema.parse(extractJson(text));
+      const res = await generate({
+        apiKey: opts.apiKey,
+        model: opts.model,
+        contents: [{ role: 'user', parts }],
+        generationConfig: { temperature: 0.1, ...generationConfig },
+        thinking: opts.thinking,
+      });
+      return ReceiptSchema.parse(extractJson(textOf(res)));
     } catch (e) {
       lastErr = e;
-      if (e instanceof Error && /API key|permission|quota|not found/i.test(e.message)) break;
+      if (isAuthError(e) || (e instanceof AiError && e.status === 404)) break;
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('Scan failed');
-}
-
-export async function listGemmaModels(apiKey: string): Promise<string[]> {
-  const r = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': apiKey } });
-  const data = (await r.json().catch(() => ({}))) as {
-    models?: { name: string; supportedGenerationMethods?: string[] }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message ?? `HTTP ${r.status}`);
-  return (data.models ?? [])
-    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
-    .map((m) => m.name.replace(/^models\//, ''))
-    .sort((a, b) => Number(b.includes('gemma')) - Number(a.includes('gemma')) || a.localeCompare(b));
 }

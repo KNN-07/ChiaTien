@@ -8,19 +8,27 @@ export interface AppSettings {
   theme: Theme;
   apiKey: string;
   model: string;
+  /** Gemma 4 thinking mode (slower, more careful). */
+  thinking: boolean;
   /** Last members used as payer per trip, for quick defaults. */
   lastPayer: Record<string, string>;
 }
 
-export const DEFAULT_MODEL = 'gemma-3-27b-it';
+export const DEFAULT_MODEL = 'gemma-4-31b-it';
+export const SUGGESTED_MODELS = ['gemma-4-31b-it', 'gemma-4-26b-a4b-it'];
 const KEY = 'chiatien.settings';
 
-const defaults: AppSettings = { lang: 'vi', theme: 'system', apiKey: '', model: DEFAULT_MODEL, lastPayer: {} };
+const defaults: AppSettings = { lang: 'vi', theme: 'system', apiKey: '', model: DEFAULT_MODEL, thinking: false, lastPayer: {} };
 
 function load(): AppSettings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const s: AppSettings = { ...defaults, ...JSON.parse(raw) };
+      // Gemma 3 has no native tool calling; move old installs to Gemma 4.
+      if (/^gemma-[23]-/.test(s.model)) s.model = DEFAULT_MODEL;
+      return s;
+    }
   } catch {
     /* storage unavailable */
   }

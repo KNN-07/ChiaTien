@@ -205,6 +205,7 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
         image: img,
         hintCurrency: draft.currency,
         categories: CATEGORIES.map((c) => c.id),
+        thinking: settings.thinking,
       });
       applyReceipt(r);
     } catch (e) {

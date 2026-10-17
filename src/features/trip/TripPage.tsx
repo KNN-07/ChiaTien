@@ -46,9 +46,14 @@ export function TripPage() {
         }
         subtitle={trip.locked ? `🔒 ${t('trips.locked')}` : undefined}
         right={
-          <IconLink to="/settings" label={t('settings.title')}>
-            ⚙️
-          </IconLink>
+          <>
+            <IconLink to={`/assistant?trip=${trip.id}`} label={t('ai.open')}>
+              ✨
+            </IconLink>
+            <IconLink to="/settings" label={t('settings.title')}>
+              ⚙️
+            </IconLink>
+          </>
         }
       />
       <nav className="-mx-4 mb-4 flex gap-1 overflow-x-auto px-4 pb-1">
