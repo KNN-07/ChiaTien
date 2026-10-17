@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-tap-highlight-color: transparent; }
+body { @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100; }
+input[type='date'] { min-height: 2.75rem; }
+.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0.75rem); }
