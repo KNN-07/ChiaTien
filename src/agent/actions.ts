@@ -5,7 +5,7 @@ import { allocate, formatMoney, toMajor, toMinor } from '../domain/money';
 import { normalizeCurrency } from '../domain/normalize';
 import { planSettlement } from '../domain/settle';
 import { computeShares } from '../domain/split';
-import { CATEGORIES, defaultParticipants, memberName, newMember, today, uid } from '../domain/trip';
+import { CATEGORIES, defaultParticipants, expenseNumbers, memberName, newMember, today, uid } from '../domain/trip';
 import type { Expense, ID, Item, Member, SplitMode, Trip } from '../domain/types';
 import { validateExpense } from '../domain/validate';
 
@@ -82,7 +82,7 @@ export const ExpenseArgs = z.object({
   split_mode: z.enum(['equal', 'exact', 'percent', 'shares', 'adjust', 'itemized']).optional().nullable(),
   participants: z.array(z.object({ name: str, value: optMoney })).optional().nullable(),
   items: z
-    .array(z.object({ name: str, amount: money, for: z.array(str).optional().nullable() }))
+    .array(z.object({ name: str, amount: optMoney, qty: optMoney, unit_price: optMoney, for: z.array(str).optional().nullable() }))
     .optional()
     .nullable(),
   tax: optMoney,
@@ -114,14 +114,26 @@ export function buildExpense(trip: Trip, a: ExpenseArgsT, base?: Expense): Expen
   const fromBase = (v: number) => (curChanged ? m(toMajor(v, base!.currency)) : v);
 
   // Items & extras
-  let items: Item[] | undefined = base?.items?.map((it) => ({ ...it, amount: fromBase(it.amount) }));
+  let items: Item[] | undefined = base?.items?.map((it) => ({
+    ...it,
+    amount: fromBase(it.amount),
+    unitPrice: it.unitPrice !== undefined ? fromBase(it.unitPrice) : undefined,
+  }));
   if (a.items) {
-    items = a.items.map((it) => ({
-      id: uid(),
-      name: it.name,
-      amount: m(it.amount),
-      split: { mode: 'equal', entries: (it.for?.length ? resolveNames(trip, it.for, d) : []).map((id) => ({ memberId: id, value: 1 })) },
-    }));
+    items = a.items.map((it) => {
+      const qty = it.qty && it.qty > 0 ? it.qty : undefined;
+      const amount = it.amount != null ? m(it.amount) : it.unit_price != null ? Math.round((qty ?? 1) * m(it.unit_price)) : NaN;
+      if (Number.isNaN(amount)) throw new ActionError(`item "${it.name}" needs amount or unit_price`);
+      const unitPrice = it.unit_price != null ? m(it.unit_price) : qty ? Math.round(amount / qty) : undefined;
+      return {
+        id: uid(),
+        name: it.name,
+        qty,
+        unitPrice,
+        amount,
+        split: { mode: 'equal' as const, entries: (it.for?.length ? resolveNames(trip, it.for, d) : []).map((id) => ({ memberId: id, value: 1 })) },
+      };
+    });
   }
   const bx = base?.extras;
   const extras = {
@@ -212,9 +224,10 @@ export function buildExpense(trip: Trip, a: ExpenseArgsT, base?: Expense): Expen
 
 const fmt = (minor: number, cur: string) => formatMoney(minor, cur, 'en-US');
 
-export function describeExpense(trip: Trip, e: Expense) {
+export function describeExpense(trip: Trip, e: Expense, no?: number) {
   const shares = computeShares(e);
   return {
+    ...(no ? { no } : {}),
     id: e.id,
     date: e.date,
     title: e.title,
@@ -225,13 +238,23 @@ export function describeExpense(trip: Trip, e: Expense) {
     paid_by: e.payers.map((p) => ({ name: memberName(trip, p.memberId), amount: toMajor(p.amount, e.currency) })),
     split_mode: e.split.mode,
     shares: [...shares].map(([id, v]) => ({ name: memberName(trip, id), amount: toMajor(v, e.currency) })),
-    ...(e.items?.length ? { items: e.items.map((it) => ({ name: it.name, amount: toMajor(it.amount, e.currency), for: it.split.entries.map((x) => memberName(trip, x.memberId)) })) } : {}),
+    ...(e.items?.length ? {
+          items: e.items.map((it, i) => ({
+            no: i + 1,
+            name: it.name,
+            ...(it.qty ? { qty: it.qty } : {}),
+            ...(it.unitPrice ? { unit_price: toMajor(it.unitPrice, e.currency) } : {}),
+            amount: toMajor(it.amount, e.currency),
+            for: it.split.entries.map((x) => memberName(trip, x.memberId)),
+          })),
+        } : {}),
     ...(e.note ? { note: e.note } : {}),
   };
 }
 
 export function describeTrip(trip: Trip, maxExpenses = 60) {
   const r = computeBalances(trip);
+  const nums = expenseNumbers(trip);
   return {
     trip_id: trip.id,
     name: trip.name,
@@ -253,7 +276,7 @@ export function describeTrip(trip: Trip, maxExpenses = 60) {
     expenses: [...trip.expenses]
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt)
       .slice(0, maxExpenses)
-      .map((e) => describeExpense(trip, e)),
+      .map((e) => describeExpense(trip, e, nums.get(e.id))),
     transfers: trip.transfers.map((t) => ({ id: t.id, date: t.date, from: memberName(trip, t.from), to: memberName(trip, t.to), amount: toMajor(t.amount, t.currency), currency: t.currency })),
   };
 }

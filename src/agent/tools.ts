@@ -45,7 +45,7 @@ const expenseProps = {
   paid_by: ARR(OBJ({ name: S(), amount: N('omit = split remainder') }, ['name'])),
   split_mode: E(['equal', 'exact', 'percent', 'shares', 'adjust', 'itemized'], 'default equal'),
   participants: ARR(OBJ({ name: S(), value: N('amount|percent|weight|adjustment per split_mode') }, ['name']), 'omit = everyone present'),
-  items: ARR(OBJ({ name: S(), amount: N('line total'), for: NAMES }, ['name', 'amount'])),
+  items: ARR(OBJ({ name: S(), qty: N(), unit_price: N(), amount: N('line total; or give qty + unit_price'), for: NAMES }, ['name'])),
   tax: N('added on top only'),
   service: N('added on top only'),
   tip: N(),

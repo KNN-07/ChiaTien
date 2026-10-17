@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computeShares } from '../domain/split';
 import { newMember, newTrip } from '../domain/trip';
-import { ActionError, buildExpense, ExpenseArgs, findMember, parseArgs, resolveNames } from './actions';
+import { ActionError, buildExpense, describeTrip, ExpenseArgs, findMember, parseArgs, resolveNames } from './actions';
 
 function trip() {
   const t = newTrip('Đà Lạt', 'VND');
@@ -62,6 +62,31 @@ describe('agent actions', () => {
     expect(e.split.mode).toBe('itemized');
     expect(e.amount).toBe(330000);
     expect(sharesByName(t, e)).toEqual({ 'Nguyễn An': 220000, Bình: 55000, Chi: 55000 });
+  });
+
+  it('items from qty × unit_price, numbered in descriptions', () => {
+    const t = trip();
+    const e = build(t, {
+      currency: 'MYR',
+      paid_by: [{ name: 'Chi' }],
+      items: [
+        { name: 'French Fries [Large]', qty: 2, unit_price: 7.5, for: ['Chi'] },
+        { name: 'Fragrant Rice', qty: 3, amount: 11.4, for: ['Dũng'] },
+      ],
+    });
+    expect(e.amount).toBe(2640);
+    expect(e.items!.map((i) => [i.qty, i.unitPrice, i.amount])).toEqual([
+      [2, 750, 1500],
+      [3, 380, 1140],
+    ]);
+    t.expenses.push(build(t, { title: 'Earlier', amount: 1000, date: '2026-01-01', paid_by: [{ name: 'An' }] }), e);
+    const d = describeTrip(t);
+    expect(d.expenses.map((x) => [x.title, x.no])).toEqual([
+      ['', 2],
+      ['Earlier', 1],
+    ]);
+    expect(d.expenses[0].items?.[1]).toMatchObject({ no: 2, qty: 3, unit_price: 3.8, amount: 11.4 });
+    expect(() => build(t, { paid_by: [{ name: 'An' }], items: [{ name: 'x', qty: 2 }] })).toThrow(/amount or unit_price/);
   });
 
   it('update keeps untouched fields and converts on currency change', () => {

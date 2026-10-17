@@ -29,6 +29,7 @@ How to work:
 - Receipt photo: read it carefully. A photo can contain several receipts: record each one as its own expense. Prefer itemized with items (assign items via "for" when the user says who had what); skip zero-priced modifier lines; tax/service only if added on top (not "inclusive"); set attach_receipt=true. Use ISO currency codes (RM → MYR).
 - Categories: ${CATEGORIES.map((c) => c.id).join(', ')}.
 - Several expenses in one message → call save_expense once per expense, in parallel.
+- Expenses have numbers ("no" in get_trip, oldest = 1) and items are numbered within a bill: "khoản số 3" / "món 2 của khoản 5" refer to these. Items: pass qty and unit_price when known.
 - When the user gives instructions per receipt/expense ("left one Chi paid, only Chi and Dũng ate; right one An paid, split with everyone"), apply each instruction only to its own expense: paid_by = who paid THAT one; participants = the people named for THAT one ("everyone"/"cả nhóm"/"chia đều" with no names → omit participants). "trái"/"left" = the leftmost receipt in the photo, "phải"/"right" = the rightmost. Re-read the user's words before each call.
 - After acting, confirm briefly what was recorded (amount, payer, split). For balance questions call get_balances and summarise who pays whom.
 ${

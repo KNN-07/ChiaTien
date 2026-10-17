@@ -29,21 +29,57 @@ export function ItemsEditor({ trip, draft, onChange }: { trip: Trip; draft: Expe
   const setItem = (id: string, patch: Partial<Item>) => setItems(items.map((it) => (it.id === id ? { ...it, ...patch } : it)));
   const setExtras = (patch: Partial<Extras>) => onChange({ items, extras: { ...extras, ...patch } });
 
+  // qty × unit price = line total, kept in sync whichever field is edited.
+  const setQty = (it: Item, raw: string) => {
+    const qty = raw === '' ? undefined : Math.max(0, parseFloat(raw.replace(',', '.')) || 0);
+    if (qty && it.unitPrice) setItem(it.id, { qty, amount: Math.round(qty * it.unitPrice) });
+    else if (qty && it.amount) setItem(it.id, { qty, unitPrice: Math.round(it.amount / qty) });
+    else setItem(it.id, { qty });
+  };
+  const setUnit = (it: Item, unitPrice: number) => setItem(it.id, { unitPrice: unitPrice || undefined, amount: Math.round((it.qty || 1) * unitPrice) });
+  const setTotal = (it: Item, amount: number) => setItem(it.id, { amount, unitPrice: it.qty ? Math.round(amount / it.qty) : undefined });
+
+  const numbers = (it: Item) => (
+    <>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="any"
+        value={it.qty ?? ''}
+        onChange={(e) => setQty(it, e.target.value)}
+        placeholder="1"
+        aria-label={t('exp.qty')}
+        className="text-center tabular-nums"
+      />
+      <AmountInput value={it.unitPrice ?? 0} currency={cur} onChange={(v) => setUnit(it, v)} placeholder={t('exp.unit_price')} />
+      <AmountInput value={it.amount} currency={cur} onChange={(v) => setTotal(it, v)} placeholder={t('exp.line_total')} className="font-medium" />
+    </>
+  );
+
   return (
     <div className="grid gap-4">
       <ul className="divide-y rounded-lg border">
+        <li className="hidden grid-cols-[1.75rem_minmax(0,1fr)_4.5rem_8rem_8rem_2.25rem] gap-2 bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground sm:grid">
+          <span className="text-center">#</span>
+          <span>{t('exp.item_name')}</span>
+          <span className="text-center">{t('exp.qty')}</span>
+          <span>{t('exp.unit_price')}</span>
+          <span>{t('exp.line_total')}</span>
+          <span />
+        </li>
         {items.map((it, idx) => (
           <li key={it.id} className="grid gap-2.5 p-3">
-            <div className="flex gap-2">
-              <Input value={it.name} onChange={(e) => setItem(it.id, { name: e.target.value })} placeholder={`${t('exp.item_name')} ${idx + 1}`} className="flex-1" />
-              <div className="w-32 sm:w-40">
-                <AmountInput value={it.amount} currency={cur} onChange={(amount) => setItem(it.id, { amount })} />
-              </div>
+            <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_2.25rem] items-center gap-2 sm:grid-cols-[1.75rem_minmax(0,1fr)_4.5rem_8rem_8rem_2.25rem]">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border bg-muted text-xs font-semibold tabular-nums text-muted-foreground">{idx + 1}</span>
+              <Input value={it.name} onChange={(e) => setItem(it.id, { name: e.target.value })} placeholder={`${t('exp.item_name')} ${idx + 1}`} />
+              <div className="hidden sm:contents">{numbers(it)}</div>
               <Button variant="ghost" size="icon" aria-label={t('delete')} onClick={() => setItems(items.filter((x) => x.id !== it.id))}>
                 <Icon icon={faXmark} className="text-muted-foreground" />
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)] gap-2 pl-9 sm:hidden">{numbers(it)}</div>
+            <div className="flex flex-wrap items-center gap-1.5 sm:pl-9">
               <Chip
                 className="h-7 px-2 text-xs"
                 active={everyone.length > 0 && it.split.entries.length === everyone.length}

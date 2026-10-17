@@ -31,7 +31,7 @@ import { resolveRate } from '../../domain/fx';
 import { allocate, convertMinor, currencyDigits, formatMoney, toMinor } from '../../domain/money';
 import { normalizeCurrency, normalizeDate, reconcileExtras } from '../../domain/normalize';
 import { computeShares, itemsTotal, totalWithFee, rescale } from '../../domain/split';
-import { CATEGORIES, COMMON_CURRENCIES, emptyExpense, uid } from '../../domain/trip';
+import { CATEGORIES, COMMON_CURRENCIES, emptyExpense, expenseNumbers, uid } from '../../domain/trip';
 import type { Expense, ID, SplitEntry, SplitMode, Trip } from '../../domain/types';
 import { validateExpense } from '../../domain/validate';
 import { useLocale, useT, type DictKey } from '../../i18n';
@@ -196,13 +196,18 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
   const applyReceipt = (r: Receipt) => {
     const cur = normalizeCurrency(r.currency, draft.currency);
     const m = (v?: number) => toMinor(v ?? 0, cur);
-    const items = r.items.map((it) => ({
-      id: uid(),
-      name: it.qty && it.qty !== 1 ? `${it.name} ×${it.qty}` : it.name,
-      qty: it.qty,
-      amount: m(it.total || (it.qty ?? 1) * (it.unitPrice ?? 0)),
-      split: { mode: 'equal' as const, entries: [] },
-    }));
+    const items = r.items.map((it) => {
+      const amount = m(it.total || (it.qty ?? 1) * (it.unitPrice ?? 0));
+      const qty = it.qty && it.qty > 0 ? it.qty : undefined;
+      return {
+        id: uid(),
+        name: it.name,
+        qty,
+        unitPrice: it.unitPrice ? m(it.unitPrice) : qty ? Math.round(amount / qty) : undefined,
+        amount,
+        split: { mode: 'equal' as const, entries: [] },
+      };
+    });
     const raw = { tax: m(r.tax), service: m(r.serviceCharge), tip: m(r.tip), discount: Math.abs(m(r.discount)) };
     const total = m(r.total) || computedBillTotal({ items, extras: { ...raw, mode: 'proportional' } });
     const extras = { ...reconcileExtras(itemsTotal(items), total, raw, items.length), mode: 'proportional' as const };
@@ -454,7 +459,11 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
   return (
     <Page>
       <DropOverlay show={dragging} label={t('scan.drop')} />
-      <TopBar back={`/trip/${trip.id}`} title={isNew ? t('exp.new') : t('exp.edit')} subtitle={trip.name} />
+      <TopBar
+        back={`/trip/${trip.id}`}
+        title={isNew ? t('exp.new') : `${t('exp.edit')} · #${expenseNumbers(trip).get(draft.id) ?? ''}`}
+        subtitle={trip.name}
+      />
       <input
         ref={fileRef}
         type="file"

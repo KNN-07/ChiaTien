@@ -94,6 +94,12 @@ export function memberInUse(trip: Trip, id: ID): boolean {
   );
 }
 
+/** Stable 1-based numbers for expenses in chronological order (date, then creation time). */
+export function expenseNumbers(trip: Trip): Map<ID, number> {
+  const sorted = [...trip.expenses].sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt);
+  return new Map(sorted.map((e, i) => [e.id, i + 1]));
+}
+
 export function cloneTrip(trip: Trip, name: string): Trip {
   const now = Date.now();
   return { ...structuredClone(trip), id: uid(), name, locked: false, tombstones: {}, createdAt: now, updatedAt: now };

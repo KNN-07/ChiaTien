@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CategoryIcon, Icon } from '../../components/icons';
 import { Alert, Avatar, Button, Card, cn, Empty, Input, Money, SectionLabel, Select } from '../../components/ui';
 import { computeBalances } from '../../domain/balances';
-import { CATEGORIES, memberName } from '../../domain/trip';
+import { CATEGORIES, expenseNumbers, memberName } from '../../domain/trip';
 import type { Trip } from '../../domain/types';
 import { validateExpense } from '../../domain/validate';
 import { useLocale, useT, type DictKey } from '../../i18n';
@@ -18,15 +18,16 @@ export function ExpensesTab({ trip }: { trip: Trip }) {
   const [cat, setCat] = useState('');
   const result = useMemo(() => computeBalances(trip), [trip]);
   const byId = useMemo(() => new Map(result.expenses.map((e) => [e.expense.id, e])), [result]);
+  const nums = useMemo(() => expenseNumbers(trip), [trip]);
 
   const list = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return [...trip.expenses]
       .filter((e) => !cat || e.category === cat)
       .filter((e) => !who || e.payers.some((p) => p.memberId === who) || byId.get(e.id)?.shares.has(who))
-      .filter((e) => !ql || e.title.toLowerCase().includes(ql) || (e.note ?? '').toLowerCase().includes(ql))
+      .filter((e) => !ql || e.title.toLowerCase().includes(ql) || (e.note ?? '').toLowerCase().includes(ql) || `#${nums.get(e.id)}` === ql || String(nums.get(e.id)) === ql)
       .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
-  }, [trip.expenses, q, who, cat, byId]);
+  }, [trip.expenses, q, who, cat, byId, nums]);
 
   const groups = useMemo(() => {
     const m = new Map<string, typeof list>();
@@ -169,6 +170,7 @@ export function ExpensesTab({ trip }: { trip: Trip }) {
                       <CategoryIcon id={e.category} income={e.kind === 'income'} />
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                          <span className="font-normal tabular-nums text-muted-foreground">#{nums.get(e.id)}</span>
                           {e.title || t(`cat.${e.category}` as DictKey)}
                           {e.receiptImageId && <Icon icon={faPaperclip} className="text-[10px] text-muted-foreground" />}
                           {warn && <Icon icon={faTriangleExclamation} className="text-[11px] text-warning" />}

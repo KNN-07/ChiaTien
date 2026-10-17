@@ -64,6 +64,8 @@ export interface Item {
   id: ID;
   name: string;
   qty?: number;
+  /** Price per unit in minor units (amount ≈ qty × unitPrice). */
+  unitPrice?: number;
   /** Line total in minor units. */
   amount: number;
   split: ItemSplit;
