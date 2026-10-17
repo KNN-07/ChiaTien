@@ -4,6 +4,7 @@ import {
   faCircleCheck,
   faCircleExclamation,
   faCircleInfo,
+  faImage,
   faPiggyBank,
   faTriangleExclamation,
   faXmark,
@@ -432,6 +433,20 @@ export function Toaster() {
     <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center px-4">
       <div key={msg.id} className="max-w-sm rounded-lg border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-lg animate-in fade-in-0 slide-in-from-bottom-2">
         {msg.text}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Drop overlay ---------------- */
+
+export function DropOverlay({ show, label }: { show: boolean; label: ReactNode }) {
+  if (!show) return null;
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center bg-background/80 p-6 backdrop-blur-sm animate-in fade-in-0 lg:left-64">
+      <div className="flex w-full max-w-md flex-col items-center gap-3 rounded-xl border-2 border-dashed border-foreground/30 bg-card px-6 py-12 text-center text-sm font-medium shadow-lg">
+        <Icon icon={faImage} className="text-2xl text-muted-foreground" />
+        {label}
       </div>
     </div>
   );

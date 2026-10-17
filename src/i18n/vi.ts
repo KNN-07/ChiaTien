@@ -303,6 +303,10 @@ export const vi = {
   'import.done': 'Đã nhập',
 
   'ai.title': 'Trợ lý AI',
+  'ai.paste_hint': 'Dán ảnh (Ctrl+V) hoặc kéo thả',
+  'ai.drop': 'Thả ảnh hóa đơn để gửi kèm',
+  'scan.paste_hint': 'Chụp, chọn, dán (Ctrl+V) hoặc kéo thả ảnh hóa đơn',
+  'scan.drop': 'Thả ảnh để quét hóa đơn',
   'ai.open': 'Hỏi trợ lý',
   'ai.placeholder': 'vd: An trả 450k lẩu, chia đều trừ Chi',
   'ai.send': 'Gửi',

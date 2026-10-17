@@ -24,7 +24,8 @@ import {
 import { MemberPicker } from '../../components/MemberPicker';
 import { categoryIcon, Icon } from '../../components/icons';
 import { BottomBar, Page, TopBar } from '../../components/layout';
-import { Alert, AmountInput, Avatar, Button, Card, Chip, cn, Empty, Field, Input, Money, Segmented, Select, Textarea, toast } from '../../components/ui';
+import { Alert, AmountInput, Avatar, Button, Card, Chip, cn, DropOverlay, Empty, Field, Input, Money, Segmented, Select, Textarea, toast } from '../../components/ui';
+import { useImagePaste } from '../../components/useImagePaste';
 import { resolveRate } from '../../domain/fx';
 import { allocate, convertMinor, currencyDigits, formatMoney, toMinor } from '../../domain/money';
 import { computeShares, totalWithFee, rescale } from '../../domain/split';
@@ -245,6 +246,9 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
     }
   };
 
+  // Paste (Ctrl/Cmd+V) or drop a receipt photo anywhere on the page to scan it.
+  const dragging = useImagePaste((f) => void onPickImage(f), !ro && !scanning);
+
   const save = async (andNew = false) => {
     if (errors.length) return toast(t(`issue.${errors[0].code}` as DictKey, { x: '' }));
     let receiptImageId = normalized.receiptImageId;
@@ -289,7 +293,7 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
   const photoUrl = pendingUrl || storedUrl;
 
   const scanCard = (
-    <Card title={t('exp.receipt')} description={!settings.apiKey ? undefined : t('scan.pick')}>
+    <Card title={t('exp.receipt')} description={t('scan.paste_hint')}>
       <div className="flex items-center gap-3">
         {photoUrl ? (
           <a href={photoUrl} target="_blank" rel="noreferrer" className="shrink-0">
@@ -388,6 +392,7 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
 
   return (
     <Page>
+      <DropOverlay show={dragging} label={t('scan.drop')} />
       <TopBar back={`/trip/${trip.id}`} title={isNew ? t('exp.new') : t('exp.edit')} subtitle={trip.name} />
       <input
         ref={fileRef}

@@ -20,7 +20,8 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { Icon } from '../components/icons';
 import { BottomBar, Page, TopBar } from '../components/layout';
-import { Alert, Button, buttonVariants, cn, Select } from '../components/ui';
+import { Alert, Button, buttonVariants, cn, DropOverlay, Select } from '../components/ui';
+import { useImagePaste } from '../components/useImagePaste';
 import type { ID, Trip } from '../domain/types';
 import { useT, type DictKey } from '../i18n';
 import type { Content, Part } from '../services/ai';
@@ -138,12 +139,15 @@ export function AssistantPage() {
     setListening(true);
     rec.start();
   };
+  // Paste (Ctrl/Cmd+V) or drop a photo anywhere on the page to attach it.
+  const dragging = useImagePaste(async (f) => setImage(await compressImage(f)));
   const canListen = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   const examples: DictKey[] = trip ? ['ai.ex2', 'ai.ex3', 'ai.ex5', 'ai.ex4'] : ['ai.ex1', 'ai.ex2', 'ai.ex4'];
 
   return (
     <Page wide={false} className="flex flex-col">
+      <DropOverlay show={dragging} label={t('ai.drop')} />
       <TopBar
         back={tripId ? `/trip/${tripId}` : '/'}
         title={t('ai.title')}
@@ -292,6 +296,7 @@ export function AssistantPage() {
                   <Icon icon={faMicrophone} />
                 </Button>
               )}
+              <span className="hidden px-1 text-xs text-muted-foreground sm:inline">{t('ai.paste_hint')}</span>
               <div className="flex-1" />
               {busy ? (
                 <Button size="sm" variant="outline" icon={faStop} onClick={() => abortRef.current?.abort()}>
