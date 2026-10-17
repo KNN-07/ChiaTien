@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { computeBalances, entityName } from '../domain/balances';
 import { resolveRate } from '../domain/fx';
 import { allocate, formatMoney, toMajor, toMinor } from '../domain/money';
+import { normalizeCurrency } from '../domain/normalize';
 import { planSettlement } from '../domain/settle';
 import { computeShares } from '../domain/split';
 import { CATEGORIES, defaultParticipants, memberName, newMember, today, uid } from '../domain/trip';
@@ -65,7 +66,7 @@ const date = z
 const currency = z
   .string()
   .trim()
-  .transform((s) => s.toUpperCase())
+  .transform((s) => normalizeCurrency(s, ''))
   .refine((s) => /^[A-Z]{3}$/.test(s), 'currency must be an ISO 4217 code')
   .optional()
   .nullable();

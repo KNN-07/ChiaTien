@@ -291,6 +291,7 @@ export const vi = {
   'scan.go_settings': 'Mở Cài đặt',
   'scan.done': 'Đã đọc {n} món. Kiểm tra lại và gán món cho từng người.',
   'scan.retry': 'Thử lại',
+  'scan.multiple': 'Ảnh có {n} hóa đơn — chọn hóa đơn cần ghi. Lưu xong có thể dán lại ảnh để ghi hóa đơn tiếp theo.',
 
   'import.title': 'Nhập chuyến đi',
   'import.found': 'Chuyến "{name}" — {m} thành viên, {e} khoản chi',
@@ -303,6 +304,7 @@ export const vi = {
   'import.done': 'Đã nhập',
 
   'ai.title': 'Trợ lý AI',
+  'ai.rate_wait': 'Hết hạn mức miễn phí của Google trong phút này — tự thử lại sau {s} giây…',
   'ai.paste_hint': 'Dán ảnh (Ctrl+V) hoặc kéo thả',
   'ai.drop': 'Thả ảnh hóa đơn để gửi kèm',
   'scan.paste_hint': 'Chụp, chọn, dán (Ctrl+V) hoặc kéo thả ảnh hóa đơn',
@@ -338,6 +340,8 @@ export const vi = {
   'tool.update_member': 'Sửa thành viên',
   'tool.remove_member': 'Xóa thành viên',
   'tool.set_group': 'Lưu nhóm',
+  'tool.save_expense': 'Lưu khoản',
+  'tool.delete': 'Xóa',
   'tool.add_expense': 'Thêm khoản',
   'tool.update_expense': 'Sửa khoản',
   'tool.delete_expense': 'Xóa khoản',

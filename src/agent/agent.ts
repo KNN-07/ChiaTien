@@ -6,7 +6,8 @@ import { executeTool, TOOL_DECLARATIONS, type ToolContext } from './tools';
 
 export type AgentEvent =
   | { type: 'text'; text: string }
-  | { type: 'tool'; name: string; args: Record<string, unknown>; result: Record<string, unknown>; ok: boolean };
+  | { type: 'tool'; name: string; args: Record<string, unknown>; result: Record<string, unknown>; ok: boolean }
+  | { type: 'wait'; seconds: number };
 
 const MAX_STEPS = 12;
 
@@ -23,13 +24,20 @@ How to work:
 - Children / half portions → split_mode "shares". Someone ordered extra → "adjust" or "itemized".
 - Shared fund ("quỹ chung", "góp quỹ"): add a member with kind "pot", record contributions with add_transfer person → pot, and expenses paid_by the pot.
 - Repayments ("A đã trả B 200k", "A chuyển khoản cho B") → add_transfer.
-- Refunds / deposits returned / selling stuff → add_expense with kind "income"; paid_by = who received the money.
+- Refunds / deposits returned / selling stuff → save_expense with kind "income"; paid_by = who received the money.
 - Foreign currency: set currency; rates are fetched automatically. If the user mentions a real exchange ("đổi 10 triệu được 13.000 baht"), call add_currency_exchange.
-- Receipt photo: read it carefully, prefer itemized with items (assign items via "for" when the user says who had what), include tax/service/tip/discount, set attach_receipt=true.
+- Receipt photo: read it carefully. A photo can contain several receipts: record each one as its own expense. Prefer itemized with items (assign items via "for" when the user says who had what); skip zero-priced modifier lines; tax/service only if added on top (not "inclusive"); set attach_receipt=true. Use ISO currency codes (RM → MYR).
 - Categories: ${CATEGORIES.map((c) => c.id).join(', ')}.
-- Several expenses in one message → call add_expense once per expense.
+- Several expenses in one message → call save_expense once per expense, in parallel.
+- When the user gives instructions per receipt/expense ("left one Chi paid, only Chi and Dũng ate; right one An paid, split with everyone"), apply each instruction only to its own expense: paid_by = who paid THAT one; participants = the people named for THAT one ("everyone"/"cả nhóm"/"chia đều" with no names → omit participants). "trái"/"left" = the leftmost receipt in the photo, "phải"/"right" = the rightmost. Re-read the user's words before each call.
 - After acting, confirm briefly what was recorded (amount, payer, split). For balance questions call get_balances and summarise who pays whom.
-${currentTrip ? `\nThe user currently has this trip open: "${currentTrip.name}" (trip_id ${currentTrip.id}). Assume they mean it unless they say otherwise.` : ''}`;
+${
+    currentTrip
+      ? `\nThe user currently has this trip open: "${currentTrip.name}" (trip_id ${currentTrip.id}, base ${currentTrip.baseCurrency}). Members: ${
+          currentTrip.members.map((m) => (m.kind === 'person' ? m.name : `${m.name} (${m.kind})`)).join(', ') || 'none yet'
+        }. Assume they mean this trip; you don't need get_trip just to add expenses.`
+      : ''
+  }`;
 }
 
 export async function runAgentTurn(opts: {
@@ -54,6 +62,7 @@ export async function runAgentTurn(opts: {
       tools: TOOL_DECLARATIONS,
       thinking: opts.thinking,
       signal: opts.signal,
+      onWait: (seconds) => opts.onEvent({ type: 'wait', seconds }),
     });
     // Keep the model turn verbatim (incl. thought signatures) for the next request.
     contents.push(reply);

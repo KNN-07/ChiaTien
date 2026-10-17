@@ -5,6 +5,7 @@ import { undoTurn } from '../agent/tools';
 import {
   faArrowRight,
   faArrowUp,
+  faHourglassHalf,
   faChevronDown,
   faCircleCheck,
   faMagnifyingGlass,
@@ -96,7 +97,7 @@ export function AssistantPage() {
     if (image) parts.push({ inlineData: { mimeType: image.type || 'image/jpeg', data: await blobToBase64(image) } });
     parts.push({ text: msg || '(receipt photo)' });
     const turn: Turn = { id, text: msg, imageUrl: image ? URL.createObjectURL(image) : undefined, events: [], status: 'running', before: new Map(), touched: [] };
-    const ctx = { before: turn.before, image: image ?? chat.image, touched: new Set<ID>() };
+    const ctx = { before: turn.before, image: image ?? chat.image, turnImage: image ?? undefined, touched: new Set<ID>() };
     setChat((c) => ({ ...c, turns: [...c.turns, turn], image: image ?? c.image }));
     setInput('');
     setImage(null);
@@ -206,12 +207,20 @@ export function AssistantPage() {
               </div>
             </div>
             {turn.events.map((e, i) =>
-              e.type === 'text' ? (
+              e.type === 'wait' ? (
+                turn.status === 'running' && i === turn.events.length - 1 ? (
+                  <p key={i} className="flex items-center gap-2 pl-9 text-xs text-muted-foreground">
+                    <Icon icon={faHourglassHalf} className="text-[10px]" /> {t('ai.rate_wait', { s: e.seconds })}
+                  </p>
+                ) : null
+              ) : e.type === 'text' ? (
                 <div key={i} className="flex gap-2.5">
                   <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-muted">
                     <Icon icon={faWandMagicSparkles} className="text-[11px]" />
                   </span>
-                  <div className="max-w-[90%] whitespace-pre-wrap rounded-lg border bg-card px-3.5 py-2 text-sm shadow-sm">{e.text}</div>
+                  <div className="max-w-[90%] rounded-lg border bg-card px-3.5 py-2 text-sm shadow-sm">
+                    <RichText text={e.text} />
+                  </div>
                 </div>
               ) : (
                 <ToolCard key={i} event={e} />
@@ -326,6 +335,32 @@ export function AssistantPage() {
   );
 }
 
+/** Minimal formatting for model replies: **bold**, *italic*, `code` and "- " / "* " bullets. */
+function RichText({ text }: { text: string }) {
+  const lines = text.replace(/\n{3,}/g, '\n\n').split('\n');
+  return (
+    <>
+      {lines.map((line, i) => {
+        const bullet = /^\s*[-*•]\s+/.test(line);
+        const body = bullet ? line.replace(/^\s*[-*•]\s+/, '') : line;
+        const parts = body.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*)/g).map((p, j) => {
+          if (p.startsWith('**') && p.endsWith('**') && p.length > 4) return <strong key={j}>{p.slice(2, -2)}</strong>;
+          if (p.startsWith('`') && p.endsWith('`') && p.length > 2) return <code key={j} className="rounded bg-muted px-1 font-mono text-xs">{p.slice(1, -1)}</code>;
+          if (p.startsWith('*') && p.endsWith('*') && p.length > 2) return <em key={j}>{p.slice(1, -1)}</em>;
+          return p;
+        });
+        return (
+          <span key={i} className={bullet ? 'block pl-4 -indent-3' : 'block'}>
+            {bullet && '• '}
+            {parts}
+            {!line && '\u00a0'}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
 interface SpeechRec {
   lang: string;
   interimResults: boolean;
@@ -377,6 +412,7 @@ function summarize(e: Extract<AgentEvent, { type: 'tool' }>): string {
       return `${r.name} · ${(r.members ?? []).join(', ')}`;
     case 'add_members':
       return (r.added ?? []).join(', ');
+    case 'save_expense':
     case 'add_expense':
     case 'update_expense': {
       const x = r.expense;

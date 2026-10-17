@@ -19,6 +19,7 @@ import {
   faUser,
   faUserPlus,
   faUsers,
+  faXmark,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons';
 import { MemberPicker } from '../../components/MemberPicker';
@@ -28,7 +29,8 @@ import { Alert, AmountInput, Avatar, Button, Card, Chip, cn, DropOverlay, Empty,
 import { useImagePaste } from '../../components/useImagePaste';
 import { resolveRate } from '../../domain/fx';
 import { allocate, convertMinor, currencyDigits, formatMoney, toMinor } from '../../domain/money';
-import { computeShares, totalWithFee, rescale } from '../../domain/split';
+import { normalizeCurrency, normalizeDate, reconcileExtras } from '../../domain/normalize';
+import { computeShares, itemsTotal, totalWithFee, rescale } from '../../domain/split';
 import { CATEGORIES, COMMON_CURRENCIES, emptyExpense, uid } from '../../domain/trip';
 import type { Expense, ID, SplitEntry, SplitMode, Trip } from '../../domain/types';
 import { validateExpense } from '../../domain/validate';
@@ -190,25 +192,27 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
     setDraft(next);
   };
 
+  const lastMerchant = useRef('');
   const applyReceipt = (r: Receipt) => {
-    const cur = /^[A-Z]{3}$/.test(r.currency) ? r.currency : draft.currency;
+    const cur = normalizeCurrency(r.currency, draft.currency);
     const m = (v?: number) => toMinor(v ?? 0, cur);
-    const items = r.items
-      .filter((it) => it.total || it.name)
-      .map((it) => ({
-        id: uid(),
-        name: it.qty && it.qty !== 1 ? `${it.name} ×${it.qty}` : it.name,
-        qty: it.qty,
-        amount: m(it.total || (it.qty ?? 1) * (it.unitPrice ?? 0)),
-        split: { mode: 'equal' as const, entries: [] },
-      }));
-    const extras = { tax: m(r.tax), service: m(r.serviceCharge), tip: m(r.tip), discount: Math.abs(m(r.discount)), mode: 'proportional' as const };
-    const total = m(r.total) || computedBillTotal({ items, extras });
+    const items = r.items.map((it) => ({
+      id: uid(),
+      name: it.qty && it.qty !== 1 ? `${it.name} ×${it.qty}` : it.name,
+      qty: it.qty,
+      amount: m(it.total || (it.qty ?? 1) * (it.unitPrice ?? 0)),
+      split: { mode: 'equal' as const, entries: [] },
+    }));
+    const raw = { tax: m(r.tax), service: m(r.serviceCharge), tip: m(r.tip), discount: Math.abs(m(r.discount)) };
+    const total = m(r.total) || computedBillTotal({ items, extras: { ...raw, mode: 'proportional' } });
+    const extras = { ...reconcileExtras(itemsTotal(items), total, raw, items.length), mode: 'proportional' as const };
     const ids = splitIds.length ? splitIds : trip.members.filter((x) => x.kind !== 'pot').map((x) => x.id);
+    const date = normalizeDate(r.date);
     setDraft((d) => ({
       ...d,
-      title: d.title || r.merchant,
-      date: /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date <= new Date(Date.now() + 86400000).toISOString().slice(0, 10) ? r.date : d.date,
+      // Replace the title only if the user hasn't typed their own.
+      title: !d.title || d.title === lastMerchant.current ? r.merchant : d.title,
+      date: date || d.date,
       currency: cur,
       category: CATEGORIES.some((c) => c.id === r.category) ? r.category : d.category,
       amount: total,
@@ -216,12 +220,25 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
       extras,
       split: { mode: 'itemized', entries: ids.map((id) => ({ memberId: id, value: 1 })) },
     }));
+    lastMerchant.current = r.merchant;
     setAmountManual(true);
-    setScanMsg(t('scan.done', { n: items.length }));
   };
+
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [receiptIdx, setReceiptIdx] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const scanAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!scanning) return;
+    const t0 = Date.now();
+    setElapsed(0);
+    const id = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [scanning]);
 
   const onPickImage = async (file: File) => {
     setScanMsg(null);
+    setReceipts([]);
     const img = await compressImage(file);
     setPendingImage(img);
     if (!settings.apiKey) {
@@ -229,20 +246,28 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
       return;
     }
     setScanning(true);
+    const ac = new AbortController();
+    scanAbort.current = ac;
     try {
-      const r = await scanReceipt({
+      const found = await scanReceipt({
         apiKey: settings.apiKey,
         model: settings.model,
         image: img,
         hintCurrency: draft.currency,
         categories: CATEGORIES.map((c) => c.id),
         thinking: settings.thinking,
+        signal: ac.signal,
+        onWait: (s) => setScanMsg(t('ai.rate_wait', { s })),
       });
-      applyReceipt(r);
+      setReceipts(found);
+      setReceiptIdx(0);
+      applyReceipt(found[0]);
+      setScanMsg(found.length > 1 ? t('scan.multiple', { n: found.length }) : t('scan.done', { n: found[0].items.length }));
     } catch (e) {
-      setScanMsg(t('scan.failed', { err: e instanceof Error ? e.message : String(e) }));
+      if (!ac.signal.aborted) setScanMsg(t('scan.failed', { err: e instanceof Error ? e.message : String(e) }));
     } finally {
       setScanning(false);
+      scanAbort.current = null;
     }
   };
 
@@ -305,9 +330,20 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
           </span>
         )}
         <div className="grid flex-1 gap-2">
-          <Button variant={params.get('scan') && !photoUrl ? 'default' : 'outline'} disabled={scanning} icon={scanning ? faSpinner : faCamera} onClick={() => fileRef.current?.click()} className={cn(scanning && '[&_svg]:animate-spin')}>
-            {scanning ? t('scan.scanning') : t('exp.scan')}
-          </Button>
+          {scanning ? (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" disabled icon={faSpinner} className="flex-1 [&_svg]:animate-spin">
+                {t('scan.scanning')} {elapsed}s
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => scanAbort.current?.abort()} aria-label={t('ai.stop')} title={t('ai.stop')}>
+                <Icon icon={faXmark} />
+              </Button>
+            </div>
+          ) : (
+            <Button variant={params.get('scan') && !photoUrl ? 'default' : 'outline'} icon={faCamera} onClick={() => fileRef.current?.click()}>
+              {t('exp.scan')}
+            </Button>
+          )}
           {(pendingImage || draft.receiptImageId) && (
             <Button
               size="sm"
@@ -324,6 +360,31 @@ function Editor({ trip, expenseId }: { trip: Trip; expenseId: string }) {
           )}
         </div>
       </div>
+      {receipts.length > 1 && (
+        <div className="mt-3 grid gap-1.5">
+          {receipts.map((r, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setReceiptIdx(i);
+                applyReceipt(r);
+              }}
+              className={cn(
+                'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                i === receiptIdx ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-accent',
+              )}
+            >
+              <span className="truncate">
+                {i + 1}. {r.merchant || t('exp.receipt')}
+              </span>
+              <span className="shrink-0 font-medium tabular-nums">
+                {formatMoney(toMinor(r.total, normalizeCurrency(r.currency, draft.currency)), normalizeCurrency(r.currency, draft.currency), locale)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       {scanMsg && (
         <Alert variant={settings.apiKey ? 'default' : 'warning'} className="mt-3">
           {scanMsg} {!settings.apiKey && <Link to="/settings">{t('scan.go_settings')}</Link>}

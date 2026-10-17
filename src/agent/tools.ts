@@ -20,176 +20,115 @@ import {
 
 /* ---------- declarations (Gemini REST schema: uppercase types) ---------- */
 
-const S = (description: string) => ({ type: 'STRING', description });
-const N = (description: string) => ({ type: 'NUMBER', description });
-const B = (description: string) => ({ type: 'BOOLEAN', description });
-const ARR = (items: object, description: string) => ({ type: 'ARRAY', items, description });
-const OBJ = (properties: Record<string, object>, required: string[] = [], description?: string) => ({
-  type: 'OBJECT',
-  properties,
-  required,
-  ...(description ? { description } : {}),
-});
+// Kept terse on purpose: these declarations are resent on every agent step and the
+// free tier allows only ~16k input tokens/minute for Gemma 4.
+const T = (type: string, description?: string) => (description ? { type, description } : { type });
+const S = (d?: string) => T('STRING', d);
+const N = (d?: string) => T('NUMBER', d);
+const B = (d?: string) => T('BOOLEAN', d);
+const ARR = (items: object, description?: string) => ({ type: 'ARRAY', items, ...(description ? { description } : {}) });
+const OBJ = (properties: Record<string, object>, required: string[] = []) => ({ type: 'OBJECT', properties, required });
+const E = (values: string[], description?: string) => ({ type: 'STRING', enum: values, ...(description ? { description } : {}) });
 
-const TRIP_ID = S('Trip id from list_trips / create_trip.');
-const NAMES = ARR({ type: 'STRING' }, 'Member names (group names and "all" are also accepted).');
+const ID = S();
+const DATE = S('YYYY-MM-DD');
+const NAMES = ARR(S(), 'member names; group names or "all" ok');
 
 const expenseProps = {
-  title: S('Short description, e.g. "Dinner hotpot".'),
-  amount: N('Total in normal units (150k → 150000). Optional for itemized: computed from items + extras.'),
-  currency: S('ISO 4217 code. Defaults to the trip currency used most recently.'),
-  date: S('YYYY-MM-DD. Defaults to today.'),
-  category: { type: 'STRING', enum: CATEGORIES.map((c) => c.id), description: 'Category id.' },
-  kind: { type: 'STRING', enum: ['expense', 'income'], description: 'income = refund / money received, split back to people.' },
-  paid_by: ARR(OBJ({ name: S('Member name'), amount: N('Amount this person paid; omit to split the rest equally.') }, ['name']), 'Who paid (or received, for income).'),
-  split_mode: {
-    type: 'STRING',
-    enum: ['equal', 'exact', 'percent', 'shares', 'adjust', 'itemized'],
-    description: 'equal (default) | exact (value = amount owed) | percent | shares (weights, kid = 0.5) | adjust (equal ± value) | itemized (use items).',
-  },
-  participants: ARR(
-    OBJ({ name: S('Member or group name, or "all".'), value: N('Per split_mode: amount, percent, weight or adjustment.') }, ['name']),
-    'Who shares the cost. Omit = everyone present on that date.',
-  ),
-  items: ARR(OBJ({ name: S('Item name'), amount: N('Line total'), for: NAMES }, ['name', 'amount']), 'Bill items, for itemized splits. Items without "for" are spread like extras.'),
-  tax: N('Tax added on top of items (itemized).'),
-  service: N('Service charge (itemized).'),
-  tip: N('Tip (itemized).'),
-  discount: N('Discount as a positive number (itemized).'),
-  fee_pct: N('Card / FX fee percent added on top.'),
-  fx_rate: N('Custom rate for this expense: base-currency units per 1 unit of its currency.'),
-  note: S('Free note.'),
-  attach_receipt: B('Attach the photo the user sent in this conversation to the expense.'),
+  expense_id: S('set to edit an existing expense (only given fields change)'),
+  title: S(),
+  amount: N('normal units; optional when itemized'),
+  currency: S('ISO 4217'),
+  date: DATE,
+  category: E(CATEGORIES.map((c) => c.id)),
+  kind: E(['expense', 'income'], 'income = refund/money received'),
+  paid_by: ARR(OBJ({ name: S(), amount: N('omit = split remainder') }, ['name'])),
+  split_mode: E(['equal', 'exact', 'percent', 'shares', 'adjust', 'itemized'], 'default equal'),
+  participants: ARR(OBJ({ name: S(), value: N('amount|percent|weight|adjustment per split_mode') }, ['name']), 'omit = everyone present'),
+  items: ARR(OBJ({ name: S(), amount: N('line total'), for: NAMES }, ['name', 'amount'])),
+  tax: N('added on top only'),
+  service: N('added on top only'),
+  tip: N(),
+  discount: N('positive'),
+  fee_pct: N('card/FX fee %'),
+  fx_rate: N('base units per 1 unit'),
+  note: S(),
+  attach_receipt: B("attach the user's photo"),
 };
 
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
-  { name: 'list_trips', description: 'List all trips on this device with ids, members and totals.', parameters: OBJ({}) },
-  { name: 'get_trip', description: 'Full details of one trip: members, groups, currencies, expenses (with ids), transfers.', parameters: OBJ({ trip_id: TRIP_ID }, ['trip_id']) },
+  { name: 'list_trips', description: 'All trips with ids and members.', parameters: OBJ({}) },
+  { name: 'get_trip', description: 'Trip details: members, groups, currencies, expenses and transfers with ids.', parameters: OBJ({ trip_id: ID }, ['trip_id']) },
   {
     name: 'create_trip',
-    description: 'Create a new trip.',
-    parameters: OBJ(
-      {
-        name: S('Trip name'),
-        base_currency: S('Main ISO currency, default VND.'),
-        members: NAMES,
-        other_currencies: ARR({ type: 'STRING' }, 'Other currencies that will be used.'),
-        start_date: S('YYYY-MM-DD'),
-        end_date: S('YYYY-MM-DD'),
-      },
-      ['name'],
-    ),
+    description: 'Create a trip.',
+    parameters: OBJ({ name: S(), base_currency: S('ISO, default VND'), members: NAMES, other_currencies: ARR(S()), start_date: DATE, end_date: DATE }, ['name']),
   },
   {
     name: 'update_trip',
-    description: 'Rename a trip or change its settings.',
+    description: 'Rename a trip or change settings.',
     parameters: OBJ(
       {
-        trip_id: TRIP_ID,
-        name: S('New name'),
-        start_date: S('YYYY-MM-DD'),
-        end_date: S('YYYY-MM-DD'),
-        add_currencies: ARR({ type: 'STRING' }, 'Currencies to add.'),
-        settle_currency: S('Currency used to settle up.'),
-        round_to: N('Round settlement amounts to this many units (e.g. 1000 VND). 0 = none.'),
-        simplify: B('Minimise number of payments.'),
-        use_households: B('Settle per household/couple.'),
-        guest_to_host: B("Charge guests' shares to their host."),
-        locked: B('Lock (read-only) or unlock the trip.'),
+        trip_id: ID,
+        name: S(),
+        start_date: DATE,
+        end_date: DATE,
+        add_currencies: ARR(S()),
+        settle_currency: S(),
+        round_to: N('round settlements to N units, 0 = none'),
+        simplify: B('minimise payments'),
+        use_households: B(),
+        guest_to_host: B(),
+        locked: B(),
       },
       ['trip_id'],
     ),
   },
   {
     name: 'add_members',
-    description: 'Add people to a trip. kind: person (default), guest (joins briefly, can be charged to a host) or pot (shared fund).',
-    parameters: OBJ(
-      {
-        trip_id: TRIP_ID,
-        names: NAMES,
-        kind: { type: 'STRING', enum: ['person', 'guest', 'pot'] },
-        host: S('For guests: the member who invited them.'),
-        join_date: S('YYYY-MM-DD if they join later.'),
-        leave_date: S('YYYY-MM-DD if they leave early.'),
-      },
-      ['trip_id', 'names'],
-    ),
+    description: 'Add people. kind: person (default), guest (charged to host) or pot (shared fund).',
+    parameters: OBJ({ trip_id: ID, names: NAMES, kind: E(['person', 'guest', 'pot']), host: S(), join_date: DATE, leave_date: DATE }, ['trip_id', 'names']),
   },
   {
     name: 'update_member',
-    description: 'Rename a member, set join/leave dates, kind, host or bank account (VietQR).',
+    description: 'Edit a member: name, kind, host, join/leave dates ("" clears), bank for VietQR (bank_bin e.g. 970436 VCB, 970407 TCB, 970422 MB).',
     parameters: OBJ(
-      {
-        trip_id: TRIP_ID,
-        name: S('Current name'),
-        new_name: S('New name'),
-        kind: { type: 'STRING', enum: ['person', 'guest', 'pot'] },
-        host: S('Host member name (guests)'),
-        join_date: S('YYYY-MM-DD, empty string to clear'),
-        leave_date: S('YYYY-MM-DD, empty string to clear'),
-        bank_bin: S('Vietnamese bank BIN, e.g. 970436 Vietcombank, 970407 Techcombank, 970422 MB, 970416 ACB, 970418 BIDV, 970415 VietinBank, 970432 VPBank, 970423 TPBank'),
-        bank_account: S('Account number'),
-        bank_holder: S('Account holder name, uppercase without accents'),
-      },
+      { trip_id: ID, name: S(), new_name: S(), kind: E(['person', 'guest', 'pot']), host: S(), join_date: S(), leave_date: S(), bank_bin: S(), bank_account: S(), bank_holder: S() },
       ['trip_id', 'name'],
     ),
   },
-  {
-    name: 'remove_member',
-    description: 'Remove a member who has no expenses or payments.',
-    parameters: OBJ({ trip_id: TRIP_ID, name: S('Member name') }, ['trip_id', 'name']),
-  },
+  { name: 'remove_member', description: 'Remove a member with no expenses/payments.', parameters: OBJ({ trip_id: ID, name: S() }, ['trip_id', 'name']) },
   {
     name: 'set_group',
-    description: 'Create or replace a sub-group (e.g. "Room 1") or a household/couple that settles as one unit.',
-    parameters: OBJ({ trip_id: TRIP_ID, name: S('Group name'), members: NAMES, household: B('true = household/couple') }, ['trip_id', 'name', 'members']),
+    description: 'Create/replace a sub-group, or a household that settles as one.',
+    parameters: OBJ({ trip_id: ID, name: S(), members: NAMES, household: B() }, ['trip_id', 'name', 'members']),
   },
   {
-    name: 'add_expense',
-    description: 'Record an expense (or income/refund). Amounts in normal units. Returns the computed shares.',
-    parameters: OBJ({ trip_id: TRIP_ID, ...expenseProps }, ['trip_id', 'paid_by']),
+    name: 'save_expense',
+    description: 'Add an expense/income, or edit one when expense_id is given. Returns computed shares.',
+    parameters: OBJ({ trip_id: ID, ...expenseProps }, ['trip_id']),
   },
   {
-    name: 'update_expense',
-    description: 'Change an existing expense. Only the given fields change. Get ids from get_trip.',
-    parameters: OBJ({ trip_id: TRIP_ID, expense_id: S('Expense id'), ...expenseProps }, ['trip_id', 'expense_id']),
-  },
-  {
-    name: 'delete_expense',
-    description: 'Delete an expense by id.',
-    parameters: OBJ({ trip_id: TRIP_ID, expense_id: S('Expense id') }, ['trip_id', 'expense_id']),
+    name: 'delete',
+    description: 'Delete an expense or transfer by id.',
+    parameters: OBJ({ trip_id: ID, what: E(['expense', 'transfer']), id: ID }, ['trip_id', 'what', 'id']),
   },
   {
     name: 'add_transfer',
-    description: 'Record money given from one member to another: repayments, or contributions into a shared pot.',
-    parameters: OBJ(
-      { trip_id: TRIP_ID, from: S('Payer name'), to: S('Receiver name'), amount: N('Amount'), currency: S('ISO code'), date: S('YYYY-MM-DD'), note: S('Note') },
-      ['trip_id', 'from', 'to', 'amount'],
-    ),
-  },
-  {
-    name: 'delete_transfer',
-    description: 'Delete a recorded transfer by id.',
-    parameters: OBJ({ trip_id: TRIP_ID, transfer_id: S('Transfer id') }, ['trip_id', 'transfer_id']),
+    description: 'Money given between members: repayments, or contributions to a pot.',
+    parameters: OBJ({ trip_id: ID, from: S(), to: S(), amount: N(), currency: S(), date: DATE, note: S() }, ['trip_id', 'from', 'to', 'amount']),
   },
   {
     name: 'set_exchange_rate',
-    description: 'Manually set the rate for a currency: base-currency units per 1 unit. rate 0 clears the override.',
-    parameters: OBJ({ trip_id: TRIP_ID, currency: S('ISO code'), rate: N('Base units per 1 unit') }, ['trip_id', 'currency', 'rate']),
+    description: 'Manual rate: base units per 1 unit; 0 clears.',
+    parameters: OBJ({ trip_id: ID, currency: S(), rate: N() }, ['trip_id', 'currency', 'rate']),
   },
   {
     name: 'add_currency_exchange',
-    description: 'Record a real money exchange (e.g. 10,000,000 VND → 13,000 THB). Its rate is then used for the trip.',
-    parameters: OBJ(
-      { trip_id: TRIP_ID, from_currency: S('ISO'), from_amount: N('Amount given'), to_currency: S('ISO'), to_amount: N('Amount received'), date: S('YYYY-MM-DD') },
-      ['trip_id', 'from_currency', 'from_amount', 'to_currency', 'to_amount'],
-    ),
+    description: 'Record a real exchange (e.g. 10,000,000 VND to 13,000 THB); its rate is then used.',
+    parameters: OBJ({ trip_id: ID, from_currency: S(), from_amount: N(), to_currency: S(), to_amount: N(), date: DATE }, ['trip_id', 'from_currency', 'from_amount', 'to_currency', 'to_amount']),
   },
-  {
-    name: 'get_balances',
-    description: 'Who paid what, who used what, net balances and the suggested settle-up payments.',
-    parameters: OBJ({ trip_id: TRIP_ID }, ['trip_id']),
-  },
+  { name: 'get_balances', description: 'Net balances and suggested settle-up payments.', parameters: OBJ({ trip_id: ID }, ['trip_id']) },
 ];
 
 /* ---------- execution ---------- */
@@ -197,8 +136,10 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
 export interface ToolContext {
   /** Snapshot of each trip before this turn's first change (null = created this turn). */
   before: Map<ID, Trip | null>;
-  /** Photo the user attached in this conversation, if any. */
+  /** Latest photo the user attached in this conversation, if any. */
   image?: Blob;
+  /** Photo attached to the current message: auto-attached to expenses created in this turn. */
+  turnImage?: Blob;
   /** Trip the user is looking at (for change tracking in the UI). */
   touched: Set<ID>;
 }
@@ -210,8 +151,10 @@ const MUTATING = new Set([
   'update_member',
   'remove_member',
   'set_group',
+  'save_expense',
   'add_expense',
   'update_expense',
+  'delete',
   'delete_expense',
   'add_transfer',
   'delete_transfer',
@@ -358,20 +301,23 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         return { ok: true, name: gname, members: ids.map((id) => t.members.find((m) => m.id === id)?.name) };
       });
 
+    case 'save_expense':
     case 'add_expense':
     case 'update_expense': {
+      const isUpdate = name === 'update_expense' || (name === 'save_expense' && !!args.expense_id);
       const parsed = parseArgs(ExpenseArgs, args);
       let attached: string | undefined;
       const r = await mutate(ctx, args.trip_id, async (t) => {
         let base;
-        if (name === 'update_expense') {
+        if (isUpdate) {
           base = t.expenses.find((e) => e.id === args.expense_id);
           if (!base) throw new ActionError(`Unknown expense_id "${String(args.expense_id)}". Use get_trip to find it.`);
         }
         const exp = buildExpense(t, parsed, base);
-        if (args.attach_receipt && ctx.image) {
+        const photo = args.attach_receipt === true ? ctx.image : args.attach_receipt !== false && !isUpdate ? ctx.turnImage : undefined;
+        if (photo) {
           exp.receiptImageId = exp.receiptImageId ?? uid();
-          await putImage(t.id, exp.receiptImageId, ctx.image);
+          await putImage(t.id, exp.receiptImageId, photo);
           attached = exp.receiptImageId;
         }
         upsert(t.expenses, exp);
@@ -387,6 +333,10 @@ export async function executeTool(name: string, args: Record<string, unknown>, c
         ...(attached ? { receipt_attached: true } : {}),
       };
     }
+
+    case 'delete':
+      if (args.what === 'transfer') return executeTool('delete_transfer', { trip_id: args.trip_id, transfer_id: args.id }, ctx);
+      return executeTool('delete_expense', { trip_id: args.trip_id, expense_id: args.id }, ctx);
 
     case 'delete_expense':
       return mutate(ctx, args.trip_id, (t) => {
